@@ -1,0 +1,37 @@
+#! /bin/sh
+
+#
+# Build rpm package in COPR buildsystem.
+#
+
+COPR_USER="jenkins"
+COPR_HOST="localhost"
+COPR_PROJECT="indigo"
+#PRINCIPAL=
+#KEYTAB=
+
+[ -f `dirname $0`/config.sh ] && ./`dirname $0`/config.sh
+
+if [ -z "${1}" ]; then
+  echo "Usage: ${0} PACKAGE.src.rpm"
+  exit 1
+fi
+
+if [ -n "${KEYTAB}" -a -n "${PRINCIPAL}" ]; then
+  if [ -f ${KEYTAB} ]; then
+    KINIT_COMMAND="kinit -k -t ${KEYTAB} ${PRINCIPAL}"
+    echo "Acquiring Kerberos tickets for user '`id -un`': "
+    echo "   ${KINIT_COMMAND}"
+    ${KINIT_COMMAND} || exit 1
+    echo "DONE"
+  fi
+fi
+
+CMD="copr-cli build --nowait ${COPR_PROJECT} ${BUILD_URL}artifact/${1}"
+echo "+ ${CMD}" >&2
+if [ x"${COPR_HOST}" = x"localhost" ]; then
+  ${CMD}
+else
+  # PYTHONWARNINGS='ignore:A true SSLContext object is not available'
+  ssh ${COPR_USER}@${COPR_HOST} "${CMD}"
+fi

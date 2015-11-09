@@ -1,0 +1,18 @@
+#! /bin/sh -xe
+
+if [ -z "${3}" ]; then
+    echo "Usage: $0 NAME VERSION TARBALL"
+    exit 1
+fi
+
+name="${1}"
+version="${2}"
+tarball="${3}"
+subdir=`basename ${tarball} .tar.gz`
+
+cp -p ../${tarball} ${name}_${version}.orig.tar.gz
+tar xzf ../${tarball}
+cp -a debian/ ${subdir}
+cd ${subdir}
+dpkg-buildpackage -S -d -nc -us -uc
+#dpkg-buildpackage -S -us -uc

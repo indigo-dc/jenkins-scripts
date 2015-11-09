@@ -1,0 +1,4 @@
+#! /bin/sh
+apt-key adv --fetch-keys http://scientific.zcu.cz/repos/valtri.asc
+apt-key adv --fetch-keys http://scientific.zcu.cz/repos/valtri2.asc
+apt-key adv --fetch-keys http://scientific.zcu.cz/repos/jenkins-builder.asc

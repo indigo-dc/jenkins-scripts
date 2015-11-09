@@ -1,0 +1,45 @@
+#! /bin/sh -e
+
+if [ -z "${2}" ]; then
+    echo "Usage: ${0} NAME VERSION [RELEASE | RELEASE.]"
+    echo
+    echo "Env: comment"
+    echo "Env (git): commit, shortcommit, datecommit"
+    exit 1
+fi
+
+name=${1}
+version=${2}
+release=${3:-'0.'}
+comment=${comment:-'Rebuilt by Jenkins'}
+
+if echo "${release}" | grep -q '\.$'; then
+    GIT_DIR="`pwd`/../.git"
+    if [ -d ${GIT_DIR} ]; then
+        export GIT_DIR
+        commit=${commit:-`git rev-parse HEAD`}
+        shortcommit=`echo ${commit} | cut -c1-7`
+        datecommit=`git log -n1 --format='%ai' HEAD`
+        release="${release}`date --utc --date="${datecommit}" '+%Y%m%d'`git${shortcommit}"
+    else
+        release="${release}`date --utc '+%Y%m%d'`"
+    fi
+fi
+
+if [ -f ${name}.spec ]; then
+    specdate=`LC_ALL=C date '+%a %b %d %Y'`
+    packager=`rpmdev-packager 2>/dev/null` || packager="Jenkins Builder <jenkins@`hostname -f`>"
+
+    sed -e "s/^\(\%global\s\+commit\s\+\).*/\1${commit}/" -i ${name}.spec
+    sed -e "s/^\(Version:\s\+\).*/\1${version}/" -i ${name}.spec
+    sed -e "s/^\(Release:\s\+\).*/\1${release}%{?dist}/" -i ${name}.spec
+    awk "{ if (hit==1) { print \"* ${specdate} ${packager} - ${version}-${release}\n- ${comment}\n\"; hit=0 } } /%changelog/ { hit=1 } { print \$0 }" ${name}.spec > ${name}.spec.new
+    mv ${name}.spec.new ${name}.spec
+fi
+
+if [ -d debian/ ]; then
+    release=`echo ${release} | sed -e 's/\./~/'`
+
+    dch "${comment}" -v "${version}-${release}"
+    dch '' -r --urgency 'low'
+fi

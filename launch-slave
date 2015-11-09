@@ -1,0 +1,66 @@
+#!/bin/bash -l
+
+if [ $# -lt 3 ]; then
+  echo "USAGE: $0 USER HOST HUDSON_DIR [JAVA_BINDIR]"
+  exit 1
+fi
+
+# CC file may conflict after sudo
+unset KRB5CCNAME
+
+KINIT=/usr/bin/kinit
+SCP="/usr/bin/scp -B -o StrictHostKeyChecking=no"
+SSH="/usr/bin/ssh -x"
+
+echo "Environment:"
+env | sort | sed 's/^/   /'
+
+JENKINS_JAR="/var/lib/tomcat6/webapps/jenkins/WEB-INF/slave.jar"
+SLAVE_USER=$1
+SLAVE_HOST=$2
+SLAVE_HUDSON_DIR=$3
+#KEYTAB=
+#PRINCIPAL=
+
+[ -f `dirname $0`/config.sh ] && ./`dirname $0`/config.sh
+
+echo "Attempting Hudson slave launch as $SLAVE_USER on host $SLAVE_HOST..."
+
+if [ -n "$4" ]; then
+  SLAVE_JAVA=$4/
+  echo "INFO: Using remote java in $SLAVE_JAVA"
+else
+  SLAVE_JAVA=
+fi
+
+if [ -n ${KEYTAB} -a -n ${PRINCIPAL} ]; then
+  if [ -f ${KEYTAB} ]; then
+    KINIT_COMMAND="$KINIT -k -t ${KEYTAB} $PRINCIPAL"
+    echo "Acquiring Kerberos tickets for user '$SLAVE_USER': "
+    echo "   $KINIT_COMMAND"
+    $KINIT_COMMAND || exit 1
+    echo "DONE"
+  fi
+fi
+
+#echo -n "Verifying slave working directory: $SLAVE_USER@$SLAVE_HOST:$SLAVE_HUDSON_DIR ... "
+#$SSH $SLAVE_USER@$SLAVE_HOST bash -c "'"mkdir -p $SLAVE_HUDSON_DIR"'"
+#echo "DONE"
+
+SSH_COMMAND="$SCP $JENKINS_JAR \
+    $SLAVE_USER@$SLAVE_HOST:$SLAVE_HUDSON_DIR/"
+echo "Pushing slave jar file with command:"
+echo "   $SSH_COMMAND"
+$SSH_COMMAND || exit 1
+echo "DONE"
+
+REMOTE_COMMAND=". ~/.bashrc > /dev/null; umask 0077; cd $SLAVE_HUDSON_DIR; exec ${SLAVE_JAVA}java -jar ./slave.jar"
+
+# Ideally, we would launch our slaves with --login so that things like
+# modules are setup correctly.  Unfortunately, it appears that some
+# servers (like tlogin1) will hang indefinitely when you run a
+# non-interactive login shell.
+
+echo "Launching remote process with command:"
+echo "   $SSH $SLAVE_USER@$SLAVE_HOST '$REMOTE_COMMAND'"
+$SSH $SLAVE_USER@$SLAVE_HOST bash -c "'"$REMOTE_COMMAND"'"

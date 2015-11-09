@@ -1,0 +1,282 @@
+#! /bin/sh -xe
+
+#
+# Script to build binary packages from prepared source packages in chroot
+# environment.
+#
+# Local build and local external repositories are supported.
+#
+# ==== mock preparation ====
+#
+# moduser -a -A mock $LOGIN
+# usermod -a -G mock $LOGIN
+#
+# tools: mock rpm-build rpm-sign
+#
+# ==== pbuilder preparation ====
+#
+# ln -s ~jenkins/.pbuilderrc /root/.pbuilderrc
+# pbuilder --create --hookdir `pwd`/pbuilder --distribution jessie
+#
+# tools: dput mini-dinstall pbuilder
+#
+
+CMD='build'
+DEBDISTRO=${DEBDISTRO:-stable}
+DEBREPO_MAIN=${DEBREPO_MAIN:-~/debian}
+DEBREPO_DEPS=${DEBREPO_DEPS:-~/debian-externals}
+EXTERNAL_REPOS=' epel-5-x86_64 epel-5-i386 epel-6-x86_64 epel-6-i386 epel-7-x86_64 '
+KEY_ID=${KEY_ID:-'64FA8786'}
+LAUNCHDIR=`dirname $0`
+LAUNCHDIR=`(cd $LAUNCHDIR; pwd)`
+do_clean=1
+do_sign=1
+
+
+mock_build() {
+    local src="$1"
+    local name=`basename "$src" | sed -e 's/-[0-9].*//'`
+
+    echo "==== Building $name ==== "
+    touch reports/fail.$name
+    rm -f reports/$name-root.log reports/$name-build.log reports/root.log reports/build.log
+    ln -s $name-root.log reports/root.log
+    ln -s $name-build.log reports/build.log
+    touch reports/$name-root.log reports/$name-build.log
+
+    $BUILD_CMD --rebuild $src
+
+    [ "$do_sign" -eq 1 ] && rpmsign --addsign reports/*.rpm
+    mv reports/*.rpm results/
+    createrepo_c results
+
+    rm -f reports/fail.$name
+    rm -f reports/root.log reports/build.log
+    echo $name >> reports/success.log
+    echo "==== Done $name ===="
+    was_build=1
+}
+
+
+pbuilder_build() {
+    local src="$1"
+    local name=`basename "$src" | sed -e 's/_[0-9].*//'`
+    local srcdir=`dirname "$src"`
+    local builddir
+    local BASEDIR="`pwd`"
+    local CHANGES
+
+    echo "==== Building name ==== "
+    touch reports/fail.$name
+    (cd $srcdir; dpkg-source -x "`basename $src`")
+    builddir=`find $srcdir -maxdepth 1 -type d -name $name-\* | head -n 1`
+    (cd $builddir; pdebuild --buildresult $BASEDIR/results/pbuilder --auto-debsign --debsign-k $KEY_ID $PDEBUILD_OPTS -- --hookdir $LAUNCHDIR/pbuilder $PBUILDER_OPTS)
+    mv $srcdir/*.build reports/
+    CHANGES=`find results/pbuilder -type f -name $name_\*.changes | head -n 1`
+    # upload invalides the gpg sign
+    rm -f $DEBREPO_MAIN/$DEBDISTRO/Release.gpg
+    # buggy mini-dinstall?
+    rm -f $DEBREPO_MAIN/*.db
+    dput -U local $CHANGES
+    [ "$do_sign" -eq 1 ] && (cd $DEBREPO_MAIN/$DEBDISTRO; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+    rm -f reports/fail.$name
+    echo $name >> reports/success.log
+    echo "==== Done $name ===="
+    was_build=1
+}
+
+
+add() {
+    local src=$1
+    local name=`basename "$src" | sed -e 's/_[0-9]\+.*//'`
+
+    echo "==== Adding external $name ===="
+    if test "$BUILD_TYPE" = "pbuilder"; then
+            # upload invalides the gpg sign
+            rm -f $DEBREPO_DEPS/$DEBDISTRO/Release.gpg
+            # buggy mini-dinstall?
+            rm -f $DEBREPO_DEPS/*.db
+            dput -U local_externals $src
+    else
+            cp -p $src externals/
+            createrepo_c externals
+    fi
+    echo "==== Done external $name ===="
+    was_external=1
+}
+
+
+TEMP=`getopt --name mock2 --options abChp:S --longoptions add,build,no-clean,help,platform: -- "$@"`
+if [ $? != 0 ] ; then echo "Terminating." >&2 ; exit 1 ; fi
+eval set -- "$TEMP"
+
+usage() {
+    cat << EOF
+$0 [OPTIONS]
+
+OPTIONS are:
+  -h, --help ................ usage message
+  -a, --add
+  -b, --build
+  -C, --no-clean
+  -p, --platform PLATFORM ... build target platform
+  -S, --no-sign
+
+PLATFORMS:
+  sl7-x86_64
+  debian8-x86_64
+EOF
+}
+
+while true; do
+    case "$1" in
+        -h | --help )
+            usage
+            exit 0
+            ;;
+        -a | --add )
+            CMD='add'
+            ;;
+        -b | --build )
+            CMD='build'
+            ;;
+        -C | --no-clean )
+            do_clean=0
+            ;;
+        -p | --platform )
+            PLATFORM=$2
+            shift
+            ;;
+        -S | --no-sign )
+            do_sign=0
+            ;;
+        -- )
+            shift
+            break
+            ;;
+        * )
+            break
+            ;;
+    esac
+    shift
+done
+
+if [ -z "$PLATFORM" ]; then
+    echo "Platform not specified"
+    exit 1
+fi
+
+OSFAMILY=`echo $PLATFORM | cut -f1 -d-`
+OSVER=`echo $PLATFORM | cut -f2 -d-`
+ARCH=`echo $PLATFORM | cut -f3 -d-`
+case "$OSFAMILY" in
+    epel)
+        BUILD_TYPE='mock'
+        BUILD_CMD="mock --configdir=. -r $PLATFORM --resultdir `pwd`/reports"
+        REPO="sl$OSVER"
+        ;;
+    fedora)
+        BUILD_TYPE='mock'
+        BUILD_CMD="mock --configdir=. -r $PLATFORM --resultdir `pwd`/reports"
+        REPO="fc$OSVER"
+        ;;
+    debian|ubuntu)
+        BUILD_TYPE='pbuilder'
+        if [ "$do_sign" -eq 1 ]; then
+            BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder --auto-debsign --debsign-k $KEY_ID $PDEBUILD_OPTS -- --hookdir $LAUNCHDIR/pbuilder $PBUILDER_OPTS"
+        else
+            BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder $PDEBUILD_OPTS -- --hookdir $LAUNCHDIR/pbuilder $PBUILDER_OPTS"
+        fi
+        ;;
+esac
+
+if [ "$do_clean" -eq 1 ]; then
+    for d in results externals reports; do
+        [ -d $d ] && (rm -rfv $d || sudo rm -rfv $d)
+    done
+
+    if [ "$BUILD_TYPE" = "pbuilder" ] ; then
+        rm -rfv $DEBREPO_MAIN/stable $DEBREPO_MAIN/unstable $DEBREPO_MAIN/$DEBDISTRO $DEBREPO_MAIN/*.db
+        mkdir -p $DEBREPO_MAIN/$DEBDISTRO
+        # fragile mini-dinstall
+        mkdir -p $DEBREPO_MAIN/mini-dinstall/incoming
+        touch $DEBREPO_MAIN/$DEBDISTRO/Packages
+
+        rm -rfv $DEBREPO_DEPS/stable $DEBREPO_DEPS/unstable $DEBREPO_DEPS/$DEBDISTRO $DEBREPO_DEPS/*.db
+        mkdir -p $DEBREPO_DEPS/$DEBDISTRO
+        # fragile mini-dinstall
+        mkdir -p $DEBREPO_DEPS/mini-dinstall/incoming
+        touch $DEBREPO_DEPS/$DEBDISTRO/Packages
+    else
+        mkdir results 2>/dev/null || :
+        mkdir externals 2>/dev/null || :
+        mkdir reports 2>/dev/null || :
+        createrepo_c results
+        createrepo_c externals
+
+        sed -e 's/^"""\s*$//' /etc/mock/${PLATFORM}.cfg > ${PLATFORM}.cfg
+        if echo "$EXTERNAL_REPOS" | grep -q " $PLATFORM "; then
+            cat >> ${PLATFORM}.cfg <<EOF
+[EGI-external]
+name=EMI-3 External Dependencies
+baseurl=http://scientific.zcu.cz/repos/EGI-external/$REPO-\$basearch
+gpgkey=http://scientific.zcu.cz/repos/RPM-GPG-KEY-valtri
+protect=1
+priority=40
+enabled=1
+
+EOF
+        fi
+        cat >> ${PLATFORM}.cfg <<EOF
+[local]
+name=Local
+baseurl=file://`pwd`/results
+protect=1
+priority=40
+
+[local-ext]
+name=External
+baseurl=file://`pwd`/externals
+protect=1
+priority=40
+"""
+EOF
+    fi
+fi
+
+while [ -n "$1" ]; do
+    case "$CMD" in
+        add)
+            add "$1"
+            ;;
+        build)
+            if [ "$BUILD_TYPE" = "pbuilder" ]; then
+                pbuilder_build "$1"
+            else
+                mock_build "$1"
+            fi
+            ;;
+    esac
+    shift
+done
+
+if [ -n "$was_build" ]; then
+    if [ "$BUILD_TYPE" = "pbuilder" ]; then
+            sudo rm -rfv results/pbuilder
+            mkdir results/debian/
+            cp -rp $DEBREPO_MAIN/$DEBDISTRO results/debian/
+    else
+            createrepo_c results
+    fi
+    # admit all the build errors and warnings to everyone
+    chmod a+r reports/* || true
+fi
+
+if [ -n "$was_external" ]; then
+    if [ "$BUILD_TYPE" = "pbuilder" ]; then
+        [ "$do_sign" -eq 1 ] && (cd $DEBREPO_DEPS/$DEBDISTRO; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+    else
+        [ "$do_sign" -eq 1 ] && rpmsign --addsign externals/*.rpm
+        createrepo_c externals
+    fi
+fi

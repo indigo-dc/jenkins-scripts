@@ -1,0 +1,21 @@
+#! /bin/sh -xe
+
+if [ -z "${3}" ]; then
+    echo "Usage: $0 NAME VERSION TARBALL [SOURCES]"
+    exit 1
+fi
+
+name="${1}"
+version="${2}"
+tarball="${3}"
+
+dir=rpmbuild
+rm -rf ${dir}
+for d in BUILD RPMS SOURCES SRPM; do mkdir -p ${dir}/${d}; done
+cp -p ../${tarball} ${dir}/SOURCES
+while [ -n "${4}" ]; do
+    cp -p ${4} ${dir}/SOURCES
+    shift
+done
+rpmbuild -bs --define "_topdir rpmbuild" ${name}.spec
+mv ${dir}/SRPMS/*.src.rpm .
