@@ -16,7 +16,7 @@
 # ==== pbuilder preparation ====
 #
 # ln -s ~jenkins/.pbuilderrc /root/.pbuilderrc
-# pbuilder --create --hookdir `pwd`/pbuilder --distribution jessie
+# pbuilder --create --hookdir `pwd`/pbuilder --distribution jessie --basetgz /var/cache/pbuilder/debian-8-x86_64.tgz
 #
 # tools: dput mini-dinstall pbuilder
 #
@@ -61,23 +61,21 @@ mock_build() {
 pbuilder_build() {
     local src="$1"
     local name=`basename "$src" | sed -e 's/_[0-9].*//'`
-    local srcdir=`dirname "$src"`
     local builddir
-    local BASEDIR="`pwd`"
-    local CHANGES
+    local changes
 
     echo "==== Building name ==== "
     touch reports/fail.$name
-    (cd $srcdir; dpkg-source -x "`basename $src`")
-    builddir=`find $srcdir -maxdepth 1 -type d -name $name-\* | head -n 1`
-    (cd $builddir; pdebuild --buildresult $BASEDIR/results/pbuilder --auto-debsign --debsign-k $KEY_ID $PDEBUILD_OPTS -- --hookdir $LAUNCHDIR/pbuilder $PBUILDER_OPTS)
-    mv $srcdir/*.build reports/
-    CHANGES=`find results/pbuilder -type f -name $name_\*.changes | head -n 1`
+    dpkg-source -x "$src"
+    builddir=`find . -maxdepth 1 -type d -name $name-\* | head -n 1`
+    (cd $builddir; $BUILD_CMD)
+    mv *.build reports/
+    changes=`find results/pbuilder -type f -name $name_\*.changes | head -n 1`
     # upload invalides the gpg sign
     rm -f $DEBREPO_MAIN/$DEBDISTRO/Release.gpg
     # buggy mini-dinstall?
     rm -f $DEBREPO_MAIN/*.db
-    dput -U local $CHANGES
+    dput -U local $changes
     [ "$do_sign" -eq 1 ] && (cd $DEBREPO_MAIN/$DEBDISTRO; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
     rm -f reports/fail.$name
     echo $name >> reports/success.log
@@ -183,9 +181,9 @@ case "$OSFAMILY" in
     debian|ubuntu)
         BUILD_TYPE='pbuilder'
         if [ "$do_sign" -eq 1 ]; then
-            BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder --auto-debsign --debsign-k $KEY_ID $PDEBUILD_OPTS -- --hookdir $LAUNCHDIR/pbuilder $PBUILDER_OPTS"
+            BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder --auto-debsign --debsign-k $KEY_ID $PDEBUILD_OPTS -- --hookdir $LAUNCHDIR/pbuilder --basetgz /var/cache/pbuilder/$PLATFORM.tgz $PBUILDER_OPTS"
         else
-            BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder $PDEBUILD_OPTS -- --hookdir $LAUNCHDIR/pbuilder $PBUILDER_OPTS"
+            BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder $PDEBUILD_OPTS -- --hookdir $LAUNCHDIR/pbuilder --basetgz /var/cache/pbuilder/$PLATFORM.tgz $PBUILDER_OPTS"
         fi
         ;;
 esac
@@ -194,6 +192,8 @@ if [ "$do_clean" -eq 1 ]; then
     for d in results externals reports; do
         [ -d $d ] && (rm -rfv $d || sudo rm -rfv $d)
     done
+    mkdir reports 2>/dev/null || :
+    mkdir results 2>/dev/null || :
 
     if [ "$BUILD_TYPE" = "pbuilder" ] ; then
         rm -rfv $DEBREPO_MAIN/stable $DEBREPO_MAIN/unstable $DEBREPO_MAIN/$DEBDISTRO $DEBREPO_MAIN/*.db
@@ -208,9 +208,7 @@ if [ "$do_clean" -eq 1 ]; then
         mkdir -p $DEBREPO_DEPS/mini-dinstall/incoming
         touch $DEBREPO_DEPS/$DEBDISTRO/Packages
     else
-        mkdir results 2>/dev/null || :
         mkdir externals 2>/dev/null || :
-        mkdir reports 2>/dev/null || :
         createrepo_c results
         createrepo_c externals
 
@@ -260,18 +258,20 @@ while [ -n "$1" ]; do
     shift
 done
 
+# copy the final repository at the finish (debian)
+# (signing is continuous)
 if [ -n "$was_build" ]; then
     if [ "$BUILD_TYPE" = "pbuilder" ]; then
             sudo rm -rfv results/pbuilder
             mkdir results/debian/
             cp -rp $DEBREPO_MAIN/$DEBDISTRO results/debian/
-    else
-            createrepo_c results
     fi
     # admit all the build errors and warnings to everyone
     chmod a+r reports/* || true
 fi
 
+# mass sign externals repository at the finish
+# (copying not needed)
 if [ -n "$was_external" ]; then
     if [ "$BUILD_TYPE" = "pbuilder" ]; then
         [ "$do_sign" -eq 1 ] && (cd $DEBREPO_DEPS/$DEBDISTRO; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
