@@ -1,4 +1,4 @@
-#!/bin/bash -l
+#! /bin/bash -l
 
 if [ $# -lt 3 ]; then
   echo "USAGE: $0 USER HOST HUDSON_DIR [JAVA_BINDIR]"

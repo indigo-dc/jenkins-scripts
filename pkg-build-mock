@@ -1,4 +1,4 @@
-#! /bin/sh -xe
+#! /bin/bash -xe
 
 #
 # Script to build binary packages from prepared source packages in chroot
@@ -29,7 +29,9 @@ EXTERNAL_REPOS=' epel-5-x86_64 epel-5-i386 epel-6-x86_64 epel-6-i386 epel-7-x86_
 KEY_ID=${KEY_ID:-'64FA8786'}
 LAUNCHDIR=`dirname $0`
 LAUNCHDIR=`(cd $LAUNCHDIR; pwd)`
+LOCKFILE='/tmp/pkg-build-mock.lock'
 do_clean=0
+do_image=0
 do_sign=1
 
 
@@ -104,7 +106,27 @@ add() {
 }
 
 
-TEMP=`getopt --name mock2 --options abchp:S --longoptions add,build,clean,help,platform: -- "$@"`
+lock() {
+    i=0
+    while ! (set -o noclobber; echo "$1 $$" > $LOCKFILE) 2> /dev/null; do
+        sleep 10
+        i=$((i+1))
+        if [ $i -ge 6 ]; then
+          echo "Mock lockfile held by '`cat $LOCKFILE`'"
+          exit 1
+        fi
+    done
+    trap 'rm -f $LOCKFILE' INT TERM EXIT
+}
+
+
+unlock() {
+    rm -f $LOCKFILE
+    trap - INT TERM EXIT
+}
+
+
+TEMP=`getopt --name mock2 --options abchip:S --longoptions add,build,clean,help,image,platform: -- "$@"`
 if [ $? != 0 ] ; then echo "Terminating." >&2 ; exit 1 ; fi
 eval set -- "$TEMP"
 
@@ -117,6 +139,7 @@ OPTIONS are:
   -a, --add ................. add external dependencies (.rpm, .changes)
   -b, --build ............... perform build (default) (.spec, .dsc)
   -c, --clean ............... perform clean
+  -i, --image ............... create chroot image
   -p, --platform PLATFORM ... build target platform (required)
   -S, --no-sign ............. don't sign packages
 
@@ -142,6 +165,9 @@ while true; do
             ;;
         -c | --clean )
             do_clean=1
+            ;;
+        -i | --image )
+            do_image=1
             ;;
         -p | --platform )
             PLATFORM=$2
@@ -173,11 +199,13 @@ case "$OSFAMILY" in
     epel)
         BUILD_TYPE='mock'
         BUILD_CMD="mock --configdir=. -r $PLATFORM --resultdir `pwd`/reports"
+        IMAGE_CMD="mock -r $PLATFORM --init"
         REPO="sl$OSVER"
         ;;
     fedora)
         BUILD_TYPE='mock'
         BUILD_CMD="mock --configdir=. -r $PLATFORM --resultdir `pwd`/reports"
+        IMAGE_CMD="mock -r $PLATFORM --init"
         REPO="fc$OSVER"
         ;;
     debian|ubuntu)
@@ -187,6 +215,17 @@ case "$OSFAMILY" in
         else
             BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder $PDEBUILD_OPTS -- --hookdir $LAUNCHDIR/pbuilder --basetgz /var/cache/pbuilder/$PLATFORM.tgz $PBUILDER_OPTS"
         fi
+        case "$OSFAMILY-$OSVER" in
+          debian-6) distname='squeeze' ;;
+          debian-7) distname='wheezy' ;;
+          debian-8) distname='jessie' ;;
+          debian-9) distname='stretch' ;;
+          debian-*) distname='sid' ;;
+          ubuntu-12) distname='precise' ;;
+          ubuntu-14) distname='trusty' ;;
+          ubuntu-*) distname='xenial' ;;
+        esac
+        IMAGE_CMD="sudo pbuilder --create --hookdir $LAUNCHDIR/pbuilder --distribution $distname --basetgz /var/cache/pbuilder/${PLATFORM}.tgz"
         ;;
 esac
 
@@ -260,6 +299,13 @@ EOF
     fi
 fi
 
+if [ "$do_image" -eq 1 ]; then
+    lock "prepare image $PLATFORM"
+    $IMAGE_CMD
+    unlock
+fi
+
+lock "build on $PLATFORM"
 while [ -n "$1" ]; do
     case "$CMD" in
         add)
@@ -275,6 +321,7 @@ while [ -n "$1" ]; do
     esac
     shift
 done
+unlock
 
 # copy the final repository at the finish (debian)
 # (signing is continuous)
