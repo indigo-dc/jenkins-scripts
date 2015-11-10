@@ -34,6 +34,8 @@ do_clean=0
 do_image=0
 do_sign=1
 
+[ -f $LAUNCHDIR/config.sh ] && . $LAUNCHDIR/config.sh
+
 
 mock_build() {
     local src="$1"
