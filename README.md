@@ -1,6 +1,8 @@
 # Jenkins scripts
 
-Jenkins helper build scripts. The main script is **pkg-build-mock**.
+Generic Jenkins helper build scripts. The main script is **pkg-build-mock**.
+
+The nodes needs to be properly setup first (gpg key, mini-dinstall/dput configuration, packages, ...).
 
 ## launch-slave
 
@@ -17,7 +19,7 @@ Build rpm package in COPR buildsystem. copr-cli package needs to be installed an
 ## pkg-build-mock
 
 Script to build binary packages from prepared source packages in chroot
-environment.
+environment by distribution tools (mock, pbuilder).
 
 Local build and local external repositories are supported.
 
@@ -31,6 +33,12 @@ Example:
     pkg-build-mock -p epel-7-x86_64 --add cache/*.rpm
     pkg-build-mock -p epel-7-x86_64 package.spec
 
+It is needed to create chroot environment first:
+
+    pkg-build-mock -p debian-8-x86_64 --image
+
+    pkg-build-mock -p epel-7-x86_64 --image
+
 ## pkg-buildsrc-deb
 
 Make source package from debian/ directory and source tarball.
@@ -43,30 +51,6 @@ Make source package from .spec file and source tarball.
 
 Set version of the source package.
 
-## Example
+## refresh-chroot
 
-    name='pOCCI'
-    rpmname='python-pOCCI'
-    debname='python-pocci'
-    version=`sed -e "s/.*=\s*'\(.*\)'.*/\1/" pOCCI/version.py`
-    commit=${commit:-`git rev-parse HEAD`}
-    
-    # source tarball
-    wget https://github.com/CESNET/${name}/archive/${commit}/${name}-${commit}.tar.gz
-    
-    # source rpm
-    git clone http://scientific.zcu.cz/git/packaging-rpm-pOCCI.git && cd packaging-rpm-pOCCI
-    ${HOME}/scripts/pkg-bump ${rpmname} ${version} ${release}.
-    ${HOME}/scripts/pkg-buildsrc-rpm ${rpmname} ${version} ${name}-${commit}.tar.gz *.diff
-    mv *.src.rpm ..
-    cd ..
-    
-    # source deb
-    git clone http://scientific.zcu.cz/git/packaging-deb-pOCCI.git && cd packaging-deb-pOCCI
-    ${HOME}/scripts/pkg-bump ${debname} ${version} ${release}.
-    ${HOME}/scripts/pkg-buildpkg-deb ${debname} ${version} ${name}-${commit}.tar.gz
-    mv *.dsc *.debian.tar.* *.orig.tar.gz ..
-    cd ..
-
-    # COPR (let's not fail here due to chained builds)
-    ${HOME}/scripts/pkg-build-copr *.src.rpm || :
+Create or refresh chroot environments specified in *PLATFORMS* variable in *config.sh*.
