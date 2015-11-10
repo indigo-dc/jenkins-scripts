@@ -26,6 +26,8 @@ DEBDISTRO=${DEBDISTRO:-stable}
 DEBREPO_MAIN=${DEBREPO_MAIN:-~/debian}
 DEBREPO_DEPS=${DEBREPO_DEPS:-~/debian-externals}
 EXTERNAL_REPOS=' epel-5-x86_64 epel-5-i386 epel-6-x86_64 epel-6-i386 epel-7-x86_64 '
+GPG_KEY_URL='http://scientific.zcu.cz/repos/jenkins-builder.asc'
+GPG_SHORT_KEY_URL='http://scientific.zcu.cz/repos/jenkins-builder-sl5.asc'
 KEY_ID=${KEY_ID:-'64FA8786'}
 LAUNCHDIR=`dirname $0`
 LAUNCHDIR=`(cd $LAUNCHDIR; pwd)`
@@ -333,16 +335,21 @@ while [ -n "$1" ]; do
 done
 unlock
 
-# copy the final repository at the finish (debian)
+# copy the final repository at the finish (debian) + listing file
 # (signing is continuous)
 if [ -n "$was_build" ]; then
-    if [ "$BUILD_TYPE" = "pbuilder" ]; then
-            sudo rm -rfv results/pbuilder
-            mkdir results/debian/ 2>/dev/null || :
-            cp -rp $DEBREPO_MAIN/$DEBDISTRO results/debian/
-    fi
     # admit all the build errors and warnings to everyone
     chmod a+r reports/* || true
+
+    if [ "$BUILD_TYPE" = "pbuilder" ]; then
+        sudo rm -rfv results/pbuilder
+        mkdir results/$OSFAMILY/ 2>/dev/null || :
+        cp -rp $DEBREPO_MAIN/$DEBDISTRO results/$OSFAMILY/
+
+        (cd results/$OSFAMILY/$DEBDISTRO; ls -1 *.tar.gz *.tar.xz *.dsc *.changes *.deb | sort) > list.txt
+    else
+        (cd results; ls -1 *.rpm | sort) > list.txt
+    fi
 fi
 
 # mass sign externals repository at the finish
@@ -353,5 +360,47 @@ if [ -n "$was_external" ]; then
     else
         [ "$do_sign" -eq 1 ] && rpmsign --addsign externals/*.rpm
         createrepo_c externals
+    fi
+fi
+
+# repo files, if we know Jenkins URLs
+if [ -n "$BUILD_TAG" -a -n "$BUILD_URL" ]; then
+    BUILD_LATEST_URL=`echo $BUILD_URL | sed -e 's,/[0-9][0-9]*/$,/lastSuccessfulBuild/,'`
+
+    # shorter GPG keys for RHEL 5
+    if echo ${PLATFORM} | egrep -q '^epel-5'; then
+        GPG_KEY_URL=$GPG_SHORT_KEY_URL
+    fi
+
+    if [ "$BUILD_TYPE" = "pbuilder" ]; then
+        cat <<EOF > build.list
+deb ${BUILD_URL}artifact/results/$OSFAMILY/ $DEBDISTRO/
+deb-src ${BUILD_URL}artifact/results/$OSFAMILY/ $DEBDISTRO/
+EOF
+        cat <<EOF > latest.list
+deb ${BUILD_LATEST_URL}artifact/results/$OSFAMILY/ $DEBDISTRO/
+deb-src ${BUILD_LATEST_URL}artifact/results/$OSFAMILY/ $DEBDISTRO/
+EOF
+    else
+        cat <<EOF > build.repo
+[`echo $BUILD_TAG | sed 's/[=\/]/-/'`]
+name=$BUILD_TAG
+baseurl=${BUILD_URL}artifact/results
+protect=1
+enabled=1
+gpgcheck=1
+gpgkey=$GPG_KEY_URL
+priority=40
+EOF
+        cat <<EOF > latest.repo
+[`echo $BUILD_TAG | sed 's/[=\/]/-/'`]
+name=$BUILD_TAG
+baseurl=${BUILD_LATEST_URL}artifact/results
+protect=1
+enabled=1
+gpgcheck=1
+gpgkey=$GPG_KEY_URL
+priority=40
+EOF
     fi
 fi
