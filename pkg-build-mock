@@ -79,8 +79,12 @@ pbuilder_build() {
     rm -f $DEBREPO_MAIN/$DEBDISTRO/Release.gpg
     # buggy mini-dinstall?
     rm -f $DEBREPO_MAIN/*.db
-    dput -U local $changes
-    [ "$do_sign" -eq 1 ] && (cd $DEBREPO_MAIN/$DEBDISTRO; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+    if [ "$do_sign" -eq 1 ]; then
+        dput -U local $changes
+        (cd $DEBREPO_MAIN/$DEBDISTRO; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+    else
+        dput -u -U local $changes
+    fi
     rm -f reports/fail.$name
     echo $name >> reports/success.log
     echo "==== Done $name ===="
@@ -94,11 +98,15 @@ add() {
 
     echo "==== Adding external $name ===="
     if test "$BUILD_TYPE" = "pbuilder"; then
-            # upload invalides the gpg sign
-            rm -f $DEBREPO_DEPS/$DEBDISTRO/Release.gpg
-            # buggy mini-dinstall?
-            rm -f $DEBREPO_DEPS/*.db
+         # upload invalides the gpg sign
+         rm -f $DEBREPO_DEPS/$DEBDISTRO/Release.gpg
+         # buggy mini-dinstall?
+         rm -f $DEBREPO_DEPS/*.db
+         if [ "$do_sign" -eq 1 ]; then
             dput -U local_externals $src
+         else
+            dput -u -U local_externals $src
+         fi
     else
             cp -p $src externals/
             createrepo_c externals
@@ -128,7 +136,7 @@ unlock() {
 }
 
 
-TEMP=`getopt --name mock2 --options abchip:S --longoptions add,build,clean,help,image,platform: -- "$@"`
+TEMP=`getopt --name mock2 --options abchip:S --longoptions add,build,clean,help,image,no-sign,platform: -- "$@"`
 if [ $? != 0 ] ; then echo "Terminating." >&2 ; exit 1 ; fi
 eval set -- "$TEMP"
 
