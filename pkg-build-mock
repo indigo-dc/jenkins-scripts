@@ -29,7 +29,7 @@ EXTERNAL_REPOS=' epel-5-x86_64 epel-5-i386 epel-6-x86_64 epel-6-i386 epel-7-x86_
 KEY_ID=${KEY_ID:-'64FA8786'}
 LAUNCHDIR=`dirname $0`
 LAUNCHDIR=`(cd $LAUNCHDIR; pwd)`
-do_clean=1
+do_clean=0
 do_sign=1
 
 
@@ -104,7 +104,7 @@ add() {
 }
 
 
-TEMP=`getopt --name mock2 --options abChp:S --longoptions add,build,no-clean,help,platform: -- "$@"`
+TEMP=`getopt --name mock2 --options abchp:S --longoptions add,build,clean,help,platform: -- "$@"`
 if [ $? != 0 ] ; then echo "Terminating." >&2 ; exit 1 ; fi
 eval set -- "$TEMP"
 
@@ -114,15 +114,17 @@ $0 [OPTIONS]
 
 OPTIONS are:
   -h, --help ................ usage message
-  -a, --add
-  -b, --build
-  -C, --no-clean
-  -p, --platform PLATFORM ... build target platform
-  -S, --no-sign
+  -a, --add ................. add external dependencies (.rpm, .changes)
+  -b, --build ............... perform build (default) (.spec, .dsc)
+  -c, --clean ............... perform clean
+  -p, --platform PLATFORM ... build target platform (required)
+  -S, --no-sign ............. don't sign packages
 
-PLATFORMS:
-  sl7-x86_64
-  debian8-x86_64
+PLATFORMS (FAMILY-VERSION-ARCH):
+  epel-7-x86_64
+  fedora-rawhide-x86_64
+  debian-8-x86_64
+  ubuntu-14-x86_64
 EOF
 }
 
@@ -138,8 +140,8 @@ while true; do
         -b | --build )
             CMD='build'
             ;;
-        -C | --no-clean )
-            do_clean=0
+        -c | --clean )
+            do_clean=1
             ;;
         -p | --platform )
             PLATFORM=$2
@@ -188,30 +190,46 @@ case "$OSFAMILY" in
         ;;
 esac
 
+# clean (if requested)
 if [ "$do_clean" -eq 1 ]; then
     for d in results externals reports; do
         [ -d $d ] && (rm -rfv $d || sudo rm -rfv $d)
     done
-    mkdir reports 2>/dev/null || :
-    mkdir results 2>/dev/null || :
 
     if [ "$BUILD_TYPE" = "pbuilder" ] ; then
-        rm -rfv $DEBREPO_MAIN/stable $DEBREPO_MAIN/unstable $DEBREPO_MAIN/$DEBDISTRO $DEBREPO_MAIN/*.db
-        mkdir -p $DEBREPO_MAIN/$DEBDISTRO
-        # fragile mini-dinstall
+        rm -rfv $DEBREPO_MAIN/* $DEBREPO_DEPS/*
+    fi
+
+    if [ -z "$1" ]; then
+      exit 0
+    fi
+fi
+
+# setup
+mkdir reports 2>/dev/null || :
+if [ "$BUILD_TYPE" = "pbuilder" ] ; then
+    mkdir results 2>/dev/null || :
+    # fragile mini-dinstall
+    if [ ! -d $DEBREPO_MAIN/$DEBDISTRO ]; then
         mkdir -p $DEBREPO_MAIN/mini-dinstall/incoming
+        mkdir -p $DEBREPO_MAIN/$DEBDISTRO
         touch $DEBREPO_MAIN/$DEBDISTRO/Packages
-
-        rm -rfv $DEBREPO_DEPS/stable $DEBREPO_DEPS/unstable $DEBREPO_DEPS/$DEBDISTRO $DEBREPO_DEPS/*.db
-        mkdir -p $DEBREPO_DEPS/$DEBDISTRO
-        # fragile mini-dinstall
+    fi
+    if [ ! -d $DEBREPO_DEPS/$DEBDISTRO ]; then
         mkdir -p $DEBREPO_DEPS/mini-dinstall/incoming
+        mkdir -p $DEBREPO_DEPS/$DEBDISTRO
         touch $DEBREPO_DEPS/$DEBDISTRO/Packages
-    else
-        mkdir externals 2>/dev/null || :
+    fi
+else
+    if [ ! -d results ]; then
+        mkdir results
         createrepo_c results
+    fi
+    if [ ! -d externals ]; then
+        mkdir externals
         createrepo_c externals
-
+    fi
+    if [ ! -f ${PLATFORM}.cfg ]; then
         sed -e 's/^"""\s*$//' /etc/mock/${PLATFORM}.cfg > ${PLATFORM}.cfg
         if echo "$EXTERNAL_REPOS" | grep -q " $PLATFORM "; then
             cat >> ${PLATFORM}.cfg <<EOF
@@ -263,7 +281,7 @@ done
 if [ -n "$was_build" ]; then
     if [ "$BUILD_TYPE" = "pbuilder" ]; then
             sudo rm -rfv results/pbuilder
-            mkdir results/debian/
+            mkdir results/debian/ 2>/dev/null || :
             cp -rp $DEBREPO_MAIN/$DEBDISTRO results/debian/
     fi
     # admit all the build errors and warnings to everyone
