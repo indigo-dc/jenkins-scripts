@@ -223,9 +223,9 @@ case "$OSFAMILY" in
     debian|ubuntu)
         BUILD_TYPE='pbuilder'
         if [ "$do_sign" -eq 1 ]; then
-            BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder --auto-debsign --debsign-k $KEY_ID $PDEBUILD_OPTS -- --hookdir $LAUNCHDIR/pbuilder --basetgz /var/cache/pbuilder/$PLATFORM.tgz $PBUILDER_OPTS"
+            BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder --auto-debsign --debsign-k $KEY_ID $PDEBUILD_OPTS -- --hookdir `pwd`/pbuilder --basetgz /var/cache/pbuilder/$PLATFORM.tgz $PBUILDER_OPTS"
         else
-            BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder $PDEBUILD_OPTS -- --hookdir $LAUNCHDIR/pbuilder --basetgz /var/cache/pbuilder/$PLATFORM.tgz $PBUILDER_OPTS"
+            BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder $PDEBUILD_OPTS -- --hookdir `pwd`/pbuilder --basetgz /var/cache/pbuilder/$PLATFORM.tgz $PBUILDER_OPTS"
         fi
         case "$OSFAMILY-$OSVER" in
           debian-6) distname='squeeze' ;;
@@ -259,6 +259,8 @@ fi
 # setup
 mkdir reports 2>/dev/null || :
 if [ "$BUILD_TYPE" = "pbuilder" ] ; then
+    mkdir pbuilder 2>/dev/null || :
+    cp -pn $LAUNCHDIR/pbuilder/* pbuilder/
     mkdir results 2>/dev/null || :
     # fragile mini-dinstall
     if [ ! -d $DEBREPO_MAIN/$DEBDISTRO ]; then

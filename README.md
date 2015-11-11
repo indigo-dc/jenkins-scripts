@@ -23,6 +23,8 @@ environment by distribution tools (mock, pbuilder).
 
 Local build and local external repositories are supported.
 
+Configured GPG with imported private key is recommended.
+
 Example:
 
     pkg-build-mock -p debian-8-x86_64 --clean
@@ -38,6 +40,10 @@ It is needed to create chroot environment first:
     pkg-build-mock -p debian-8-x86_64 --image
 
     pkg-build-mock -p epel-7-x86_64 --image
+
+### Pbuilder (Debian, Ubuntu)
+
+Additional pbuilder hook scripts can be installed into *pbuilder/* subdirectory in current build directory.
 
 ## pkg-buildsrc-deb
 
