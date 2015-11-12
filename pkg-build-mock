@@ -263,6 +263,18 @@ if [ "$BUILD_TYPE" = "pbuilder" ] ; then
     mkdir pbuilder 2>/dev/null || :
     cp -pn $LAUNCHDIR/pbuilder/* pbuilder/
     mkdir results 2>/dev/null || :
+
+    # tune configured external repositories
+    debrepo_deps=`(cd $DEBREPO_DEPS; pwd)`
+    debrepo_main=`(cd $DEBREPO_MAIN; pwd)`
+    repoline=''
+    if [ -f ./repos.sh ]; then
+        repoline=`. ./repos.sh | tr '\n' '|'`
+    fi
+    repoline="${repoline}deb file://$debrepo_deps/ $DEBDISTRO/|"
+    repoline="${repoline}deb file://$debrepo_main/ $DEBDISTRO/"
+    sed -i ~/.pbuilderrc -e "s,^\(OTHERMIRROR\)\s*=.*,\1='$repoline',"
+
     # fragile mini-dinstall
     if [ ! -d $DEBREPO_MAIN/$DEBDISTRO ]; then
         mkdir -p $DEBREPO_MAIN/mini-dinstall/incoming
