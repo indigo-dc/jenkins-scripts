@@ -11,6 +11,6 @@ rm -fvr ${d}
 mkdir ${d}
 cd ${d}
 for p in $PLATFORMS; do
-    ~/scripts/pkg-build-mock -p ${p} --image --wait 7200
+    `dirname $0`/pkg-build-mock -p ${p} --image --wait 7200
     [ -n "$1" ] || sleep 15
 done
