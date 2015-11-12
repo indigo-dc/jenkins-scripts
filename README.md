@@ -4,7 +4,18 @@ Generic Jenkins helper build scripts. The main script is **pkg-build-mock**.
 
 The nodes needs to be properly setup first (gpg key, mini-dinstall/dput configuration, packages, ...).
 
-## launch-slave
+## Setup
+
+* *config.sh*: environment variables:
+ * *GPG\_KEY\_URL*: GPG key URL
+ * *KEY\_ID*: GPG key ID
+ * *PLATFORMS*: supported platforms
+
+* *repos.sh*: external repositories generator
+
+## Scripts
+
+### `launch-slave`
 
 Script to launch Jenkins slave on the host, for Jenkins master only.
 
@@ -12,11 +23,11 @@ Example:
 
     /var/lib/jenkins/scripts/launch-slave jenkins myriad19.zcu.cz /var/lib/jenkins
 
-## pkg-build-copr
+### `pkg-build-copr`
 
 Build rpm package in COPR buildsystem. copr-cli package needs to be installed and credentials setup.
 
-## pkg-build-mock
+### `pkg-build-mock`
 
 Script to build binary packages from prepared source packages in chroot
 environment by distribution tools (mock, pbuilder).
@@ -41,22 +52,22 @@ It is needed to create chroot environment first:
 
     pkg-build-mock -p epel-7-x86_64 --image
 
-### Pbuilder (Debian, Ubuntu)
+#### Pbuilder (Debian, Ubuntu)
 
 Additional pbuilder hook scripts can be installed into *pbuilder/* subdirectory in current build directory.
 
-## pkg-buildsrc-deb
+### `pkg-buildsrc-deb`
 
 Make source package from debian/ directory and source tarball.
 
-## pkg-buildsrc-rpm
+### `pkg-buildsrc-rpm`
 
 Make source package from .spec file and source tarball.
 
-## pkg-bump
+### `pkg-bump`
 
 Set version of the source package.
 
-## refresh-chroot
+### `refresh-chroot`
 
 Create or refresh chroot environments specified in *PLATFORMS* variable in *config.sh*.

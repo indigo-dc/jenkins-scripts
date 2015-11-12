@@ -25,7 +25,6 @@ CMD='build'
 DEBDISTRO=${DEBDISTRO:-stable}
 DEBREPO_MAIN=${DEBREPO_MAIN:-~/debian}
 DEBREPO_DEPS=${DEBREPO_DEPS:-~/debian-externals}
-EXTERNAL_REPOS=' epel-5-x86_64 epel-5-i386 epel-6-x86_64 epel-6-i386 epel-7-x86_64 '
 GPG_KEY_URL='http://scientific.zcu.cz/repos/jenkins-builder.asc'
 GPG_SHORT_KEY_URL='http://scientific.zcu.cz/repos/jenkins-builder-sl5.asc'
 KEY_ID=${KEY_ID:-'64FA8786'}
@@ -227,17 +226,18 @@ case "$OSFAMILY" in
         else
             BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder $PDEBUILD_OPTS -- --hookdir `pwd`/pbuilder --basetgz /var/cache/pbuilder/$PLATFORM.tgz $PBUILDER_OPTS"
         fi
+
         case "$OSFAMILY-$OSVER" in
-          debian-6) distname='squeeze' ;;
-          debian-7) distname='wheezy' ;;
-          debian-8) distname='jessie' ;;
-          debian-9) distname='stretch' ;;
-          debian-*) distname='sid' ;;
-          ubuntu-12) distname='precise' ;;
-          ubuntu-14) distname='trusty' ;;
-          ubuntu-*) distname='xenial' ;;
+          debian-6) distcodename='squeeze' ;;
+          debian-7) distcodename='wheezy' ;;
+          debian-8) distcodename='jessie' ;;
+          debian-9) distcodename='stretch' ;;
+          debian-*) distcodename='sid' ;;
+          ubuntu-12) distcodename='precise' ;;
+          ubuntu-14) distcodename='trusty' ;;
+          ubuntu-*) distcodename='xenial' ;;
         esac
-        IMAGE_CMD="sudo pbuilder --create --hookdir $LAUNCHDIR/pbuilder --distribution $distname --basetgz /var/cache/pbuilder/${PLATFORM}.tgz"
+        IMAGE_CMD="sudo pbuilder --create --hookdir $LAUNCHDIR/pbuilder --distribution $distcodename --basetgz /var/cache/pbuilder/${PLATFORM}.tgz"
         ;;
 esac
 
@@ -258,6 +258,7 @@ fi
 
 # setup
 mkdir reports 2>/dev/null || :
+cp -pn $LAUNCHDIR/repos.sh .
 if [ "$BUILD_TYPE" = "pbuilder" ] ; then
     mkdir pbuilder 2>/dev/null || :
     cp -pn $LAUNCHDIR/pbuilder/* pbuilder/
@@ -284,17 +285,9 @@ else
     fi
     if [ ! -f ${PLATFORM}.cfg ]; then
         sed -e 's/^"""\s*$//' /etc/mock/${PLATFORM}.cfg > ${PLATFORM}.cfg
-        if echo "$EXTERNAL_REPOS" | grep -q " $PLATFORM "; then
-            cat >> ${PLATFORM}.cfg <<EOF
-[EGI-external]
-name=EMI-3 External Dependencies
-baseurl=http://scientific.zcu.cz/repos/EGI-external/$REPO-\$basearch
-gpgkey=http://scientific.zcu.cz/repos/RPM-GPG-KEY-valtri
-protect=1
-priority=40
-enabled=1
-
-EOF
+        if [ -f ./repos.sh ]; then
+            . ./repos.sh >> ${PLATFORM}.cfg
+            echo >>  ${PLATFORM}.cfg
         fi
         cat >> ${PLATFORM}.cfg <<EOF
 [local]
