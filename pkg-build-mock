@@ -34,6 +34,7 @@ LOCKFILE='/tmp/pkg-build-mock.lock'
 do_clean=0
 do_image=0
 do_sign=1
+wait_lock=300
 
 [ -f $LAUNCHDIR/config.sh ] && . $LAUNCHDIR/config.sh
 
@@ -119,10 +120,10 @@ add() {
 
 lock() {
     i=0
-    while ! (set -o noclobber; echo "$1 $$" > $LOCKFILE) 2> /dev/null; do
+    while ! (set -o noclobber; echo "$$ $1" > $LOCKFILE) 2> /dev/null; do
         sleep 10
         i=$((i+1))
-        if [ $i -ge 6 ]; then
+        if [ $i -ge $((wait_lock/10)) ]; then
           echo "Mock lockfile held by '`cat $LOCKFILE`'"
           exit 1
         fi
@@ -137,7 +138,7 @@ unlock() {
 }
 
 
-TEMP=`getopt --name mock2 --options abchip:S --longoptions add,build,clean,help,image,no-sign,platform: -- "$@"`
+TEMP=`getopt --name mock2 --options abchip:Sw: --longoptions add,build,clean,help,image,no-sign,platform:,wait: -- "$@"`
 if [ $? != 0 ] ; then echo "Terminating." >&2 ; exit 1 ; fi
 eval set -- "$TEMP"
 
@@ -153,6 +154,7 @@ OPTIONS are:
   -i, --image ............... create chroot image
   -p, --platform PLATFORM ... build target platform (required)
   -S, --no-sign ............. don't sign packages
+  -w, --wait ................ wait time for build lock [300]
 
 PLATFORMS (FAMILY-VERSION-ARCH):
   epel-7-x86_64
@@ -186,6 +188,10 @@ while true; do
             ;;
         -S | --no-sign )
             do_sign=0
+            ;;
+        -w | --wait )
+            wait_lock=$2
+            shift
             ;;
         -- )
             shift
