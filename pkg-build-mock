@@ -26,7 +26,6 @@ DEBDISTRO=${DEBDISTRO:-stable}
 DEBREPO_MAIN=${DEBREPO_MAIN:-~/debian}
 DEBREPO_DEPS=${DEBREPO_DEPS:-~/debian-externals}
 GPG_KEY_URL='http://scientific.zcu.cz/repos/jenkins-builder.asc'
-GPG_SHORT_KEY_URL='http://scientific.zcu.cz/repos/jenkins-builder-sl5.asc'
 KEY_ID=${KEY_ID:-'64FA8786'}
 LAUNCHDIR=`dirname $0`
 LAUNCHDIR=`(cd $LAUNCHDIR; pwd)`
@@ -264,7 +263,7 @@ fi
 
 # setup
 mkdir reports 2>/dev/null || :
-cp -pn $LAUNCHDIR/repos.sh .
+[ test -f ./repos.sh ] || cp -p $LAUNCHDIR/repos.sh .
 if [ "$BUILD_TYPE" = "pbuilder" ] ; then
     mkdir pbuilder 2>/dev/null || :
     cp -pn $LAUNCHDIR/pbuilder/* pbuilder/
@@ -293,6 +292,11 @@ if [ "$BUILD_TYPE" = "pbuilder" ] ; then
         touch $DEBREPO_DEPS/$DEBDISTRO/Packages
     fi
 else
+    # for RHEL 5
+    for f in logging.ini site-defaults.cfg; do
+      [ test -f /etc/mock/$f ] && cp -p $f .
+    done
+
     if [ ! -d results ]; then
         mkdir results
         createrepo_c results
@@ -381,11 +385,6 @@ fi
 # repo files, if we know Jenkins URLs
 if [ -n "$BUILD_TAG" -a -n "$BUILD_URL" ]; then
     BUILD_LATEST_URL=`echo $BUILD_URL | sed -e 's,/[0-9][0-9]*/$,/lastSuccessfulBuild/,'`
-
-    # shorter GPG keys for RHEL 5
-    if echo ${PLATFORM} | egrep -q '^epel-5'; then
-        GPG_KEY_URL=$GPG_SHORT_KEY_URL
-    fi
 
     if [ "$BUILD_TYPE" = "pbuilder" ]; then
         cat <<EOF > build.list
