@@ -33,6 +33,8 @@ LOCKFILE='/tmp/pkg-build-mock.lock'
 do_clean=0
 do_image=0
 do_sign=1
+# workaround bugs for Debian >= 7
+pbuilder_bug=1
 wait_lock=300
 
 [ -f $LAUNCHDIR/config.sh ] && . $LAUNCHDIR/config.sh
@@ -226,6 +228,9 @@ case "$OSFAMILY" in
         ;;
     debian|ubuntu)
         BUILD_TYPE='pbuilder'
+        if [ "$pbuilder_bug" -eq 1 ]; then
+            PDEBUILD_OPTS="$PDEBUILD_OPTS --use-pdebuild-internal"
+        fi
         if [ "$do_sign" -eq 1 ]; then
             BUILD_CMD="pdebuild --buildresult `pwd`/results/pbuilder --auto-debsign --debsign-k $KEY_ID $PDEBUILD_OPTS -- --hookdir `pwd`/pbuilder --basetgz /var/cache/pbuilder/$PLATFORM.tgz $PBUILDER_OPTS"
         else
@@ -268,6 +273,10 @@ if [ "$BUILD_TYPE" = "pbuilder" ] ; then
     mkdir pbuilder 2>/dev/null || :
     cp -pn $LAUNCHDIR/pbuilder/* pbuilder/
     mkdir results 2>/dev/null || :
+    if [ "$pbuilder_bug" -eq 1 ]; then
+      # required for --use-pdebuild-internal
+      mkdir results/pbuilder 2>/dev/null || :
+    fi
 
     # tune configured external repositories
     debrepo_deps=`(cd $DEBREPO_DEPS; pwd)`
