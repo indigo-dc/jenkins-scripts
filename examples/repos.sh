@@ -8,7 +8,7 @@ if echo "$EXTERNAL_REPOS" | grep -q "\<$PLATFORM\>"; then
 		cat <<EOF
 [EGI-external]
 name=EMI-3 External Dependencies
-baseurl=http://scientific.zcu.cz/repos/EGI-external/$REPO-\$basearch
+baseurl=http://scientific.zcu.cz/repos/EGI-external/$REPO-$ARCH
 gpgkey=http://scientific.zcu.cz/repos/RPM-GPG-KEY-valtri
 protect=1
 priority=40
