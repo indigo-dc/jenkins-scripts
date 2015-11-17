@@ -326,12 +326,14 @@ name=Local
 baseurl=file://`pwd`/results
 protect=1
 priority=40
+enabled=1
 
 [local-ext]
 name=External
 baseurl=file://`pwd`/externals
 protect=1
 priority=40
+enabled=1
 """
 EOF
         # to use cached chroots
