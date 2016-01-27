@@ -268,7 +268,7 @@ fi
 
 # setup
 mkdir reports 2>/dev/null || :
-[ test -f ./repos.sh ] || cp -p $LAUNCHDIR/repos.sh .
+[ -f ./repos.sh ] || cp -p $LAUNCHDIR/repos.sh .
 if [ "$BUILD_TYPE" = "pbuilder" ] ; then
     mkdir pbuilder 2>/dev/null || :
     cp -pn $LAUNCHDIR/pbuilder/* pbuilder/
@@ -303,7 +303,7 @@ if [ "$BUILD_TYPE" = "pbuilder" ] ; then
 else
     # for RHEL 5
     for f in logging.ini site-defaults.cfg; do
-      [ test -f /etc/mock/$f ] && cp -p $f .
+      [ -f /etc/mock/$f ] && cp -p /etc/mock/$f .
     done
 
     if [ ! -d results ]; then
