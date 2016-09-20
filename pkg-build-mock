@@ -139,7 +139,7 @@ unlock() {
 }
 
 
-TEMP=`getopt --name mock2 --options abchip:Sw: --longoptions add,build,clean,help,image,no-sign,platform:,wait: -- "$@"`
+TEMP=`getopt --name mock2 --options abcd:hip:Sw: --longoptions add,build,clean,dir,help,image,no-sign,platform:,wait: -- "$@"`
 if [ $? != 0 ] ; then echo "Terminating." >&2 ; exit 1 ; fi
 eval set -- "$TEMP"
 
@@ -152,6 +152,7 @@ OPTIONS are:
   -a, --add ................. add external dependencies (.rpm, .changes)
   -b, --build ............... perform build (default) (.spec, .dsc)
   -c, --clean ............... perform clean
+  -d, --dir ................. working directory for build
   -i, --image ............... create chroot image
   -p, --platform PLATFORM ... build target platform (required)
   -S, --no-sign ............. don't sign packages
@@ -179,6 +180,10 @@ while true; do
             ;;
         -c | --clean )
             do_clean=1
+            ;;
+        -d | --dir )
+            cd ${2}
+            shift
             ;;
         -i | --image )
             do_image=1
