@@ -283,7 +283,7 @@ if [ "$BUILD_TYPE" = "pbuilder" ] ; then
     debrepo_main=`(cd $DEBREPO_MAIN; pwd)`
     repoline=''
     if [ -f ./repos.sh ]; then
-        repoline=`. ./repos.sh | tr '\n' '|'`
+        repoline=`. ./repos.sh | egrep -v '^\s*#|^\s*$' | tr '\n' '|'`
     fi
     repoline="${repoline}deb file://$debrepo_deps/ $DEBDISTRO/|"
     repoline="${repoline}deb file://$debrepo_main/ $DEBDISTRO/"
