@@ -306,6 +306,11 @@ if [ "$BUILD_TYPE" = "pbuilder" ] ; then
         touch $DEBREPO_DEPS/$DEBDISTRO/Packages
     fi
 else
+    # mock requires user path
+    if [ "`which mock`" = "/usr/sbin/mock" ]; then
+      export PATH="/usr/bin:$PATH"
+    fi
+
     # for RHEL 5
     for f in logging.ini site-defaults.cfg; do
       [ -f /etc/mock/$f ] && cp -p /etc/mock/$f .
