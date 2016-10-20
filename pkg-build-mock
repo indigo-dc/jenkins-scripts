@@ -74,10 +74,10 @@ pbuilder_build() {
     echo "==== Building $name ==== "
     touch reports/fail.$name
     dpkg-source -x "$src"
-    builddir=`find . -maxdepth 1 -type d -name $name-\* | head -n 1`
+    builddir=`find . -maxdepth 1 -type d -name ${name}-\* | head -n 1`
     (cd $builddir; $BUILD_CMD)
     mv *.build reports/
-    changes=`find results/pbuilder -type f -name $name_\*.changes | head -n 1`
+    changes=`find results/pbuilder -type f -name ${name}_\*.changes | head -n 1`
     # upload invalides the gpg sign
     rm -f $DEBREPO_MAIN/$DEBDISTRO/Release.gpg
     # buggy mini-dinstall?
