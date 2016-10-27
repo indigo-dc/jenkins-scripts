@@ -82,6 +82,8 @@ pbuilder_build() {
     rm -f $DEBREPO_MAIN/$DEBDISTRO/Release.gpg
     # buggy mini-dinstall?
     rm -f $DEBREPO_MAIN/*.db
+    # another bug: sometimes Release file is not refreshed
+    rm -f $DEBREPO_MAIN/$DEBDISTRO/Release
     if [ "$do_sign" -eq 1 ]; then
         dput -U local $changes
         (cd $DEBREPO_MAIN/$DEBDISTRO; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
@@ -105,6 +107,8 @@ add() {
          rm -f $DEBREPO_DEPS/$DEBDISTRO/Release.gpg
          # buggy mini-dinstall?
          rm -f $DEBREPO_DEPS/*.db
+         # another bug: sometimes Release file is not refreshed
+         rm -f $DEBREPO_DEPS/$DEBDISTRO/Release
          if [ "$do_sign" -eq 1 ]; then
             dput -U local_externals $src
          else
