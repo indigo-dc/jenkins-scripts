@@ -90,6 +90,8 @@ pbuilder_build() {
     else
         dput -u -U local $changes
     fi
+    # workaround for Debian >= 10 and buildinfo files
+    cp -vp ${name}_*.buildinfo $DEBREPO_MAIN/$DEBDISTRO/ || :
     rm -f reports/fail.$name
     echo $name >> reports/success.log
     echo "==== Done $name ===="
@@ -303,11 +305,21 @@ if [ "$BUILD_TYPE" = "pbuilder" ] ; then
         mkdir -p $DEBREPO_MAIN/mini-dinstall/incoming
         mkdir -p $DEBREPO_MAIN/$DEBDISTRO
         touch $DEBREPO_MAIN/$DEBDISTRO/Packages
+        touch $DEBREPO_MAIN/$DEBDISTRO/Release
+        # signing required since Debian 10
+        if [ "$do_sign" -eq 1 ]; then
+            (cd $DEBREPO_MAIN/$DEBDISTRO; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+        fi
     fi
     if [ ! -d $DEBREPO_DEPS/$DEBDISTRO ]; then
         mkdir -p $DEBREPO_DEPS/mini-dinstall/incoming
         mkdir -p $DEBREPO_DEPS/$DEBDISTRO
         touch $DEBREPO_DEPS/$DEBDISTRO/Packages
+        touch $DEBREPO_DEPS/$DEBDISTRO/Release
+        # signing required since Debian 10
+        if [ "$do_sign" -eq 1 ]; then
+            (cd $DEBREPO_DEPS/$DEBDISTRO; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+        fi
     fi
 else
     # mock requires user path
