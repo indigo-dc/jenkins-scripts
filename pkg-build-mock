@@ -306,20 +306,28 @@ if [ "$BUILD_TYPE" = "pbuilder" ] ; then
         mkdir -p "$DEBREPO_MAIN/mini-dinstall/incoming"
         mkdir -p "$DEBREPO_MAIN/$DEBDISTRO"
         touch "$DEBREPO_MAIN/$DEBDISTRO/Packages"
-        touch "$DEBREPO_MAIN/$DEBDISTRO/Release"
-        # signing required since Debian 10
-        if [ "$do_sign" -eq 1 ]; then
-            (cd "$DEBREPO_MAIN/$DEBDISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+        # Debian <= 9: "No sections in Release file" on empty Release file
+        # Debian >= 10: any Release file required
+        if [ "${OSFAMILY}" = "debian" -a "${OSVER}" -ge "10" ]; then
+            touch "$DEBREPO_MAIN/$DEBDISTRO/Release"
+            # signing required since Debian 10
+            if [ "$do_sign" -eq 1 ]; then
+                (cd "$DEBREPO_MAIN/$DEBDISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+            fi
         fi
     fi
     if [ ! -d "$DEBREPO_DEPS/$DEBDISTRO" ]; then
         mkdir -p "$DEBREPO_DEPS/mini-dinstall/incoming"
         mkdir -p "$DEBREPO_DEPS/$DEBDISTRO"
         touch "$DEBREPO_DEPS/$DEBDISTRO/Packages"
-        touch "$DEBREPO_DEPS/$DEBDISTRO/Release"
-        # signing required since Debian 10
-        if [ "$do_sign" -eq 1 ]; then
-            (cd "$DEBREPO_DEPS/$DEBDISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+        # Debian <= 9: "No sections in Release file" on empty Release file
+        # Debian >= 10: any Release file required
+        if [ "${OSFAMILY}" = "debian" -a "${OSVER}" -ge "10" ]; then
+            touch "$DEBREPO_DEPS/$DEBDISTRO/Release"
+            # signing required since Debian 10
+            if [ "$do_sign" -eq 1 ]; then
+                (cd "$DEBREPO_DEPS/$DEBDISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+            fi
         fi
     fi
 else
