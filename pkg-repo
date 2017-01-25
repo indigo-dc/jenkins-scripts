@@ -1,0 +1,381 @@
+#! /bin/bash -xe
+
+#
+# Work with repositories
+#
+
+# Required tools:
+#
+# * Fedora/EPEL: createrepo_c gnupg rpm-sign
+# * Debian:      dput gnupg mini-dinstall
+#
+
+APT_REPOFILE=${APT_REPOFILE:-'/etc/apt/sources.list.d/local-build.list'}
+YUM_REPOFILE=${YUM_REPOFILE:-'/etc/yum.repos.d/local-build.repo'}
+DEB_DISTRO=${DEB_DISTRO:-stable}
+REPO_ARTIFACT=${REPO_ARTIFACT:-~/repository-artifacts}
+REPO_EXTERNAL=${REPO_EXTERNAL:-~/repository-externals}
+# GPG key URL (only for local yum repos)
+GPG_KEY_URL='http://scientific.zcu.cz/repos/jenkins-builder.asc'
+LAUNCHDIR=`dirname "$0"`
+LAUNCHDIR=`(cd "$LAUNCHDIR"; pwd)`
+do_clean=0
+do_setup_chroot=0
+do_setup_system=0
+do_sign=1
+was_package=0
+
+[ -f "$LAUNCHDIR/config.sh" ] && . "$LAUNCHDIR/config.sh"
+
+
+repo_setup() {
+    local repo_name=$1
+    local repo_dir=$2
+
+    mkdir -p "$repo_dir" 2>/dev/null || :
+
+    if [ "$REPO_TYPE" = 'apt' ]; then
+      # fragile mini-dinstall
+      if [ ! -d "$repo_dir/$DEB_DISTRO" ]; then
+          mkdir -p "$repo_dir/mini-dinstall/incoming"
+          mkdir -p "$repo_dir/$DEB_DISTRO"
+          touch "$repo_dir/$DEB_DISTRO/Packages"
+          ## Debian <= 9: "No sections in Release file" on existing and empty Release file
+          ## Debian >= 10: any Release file required
+          #if [ "${OSFAMILY}" = "debian" -a "${OSVER}" -ge "10" ]; then
+          #    touch "$repo_dir/$DEB_DISTRO/Release"
+          #    # signing required since Debian 10
+          #    if [ "$do_sign" -eq 1 ]; then
+          #        (cd "$repo_dir/$DEB_DISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+          #    fi
+          #fi
+      fi
+
+      cat >> ~/.dput.cf <<EOF
+[$repo_name]
+fqdn                    = localhost
+method                  = local
+incoming                = $repo_dir/mini-dinstall/incoming
+run_dinstall            = 0
+post_upload_command     = /usr/bin/mini-dinstall -v --debug --batch -c ~/.mini-dinstall-${repo_name}.conf $repo_dir
+
+EOF
+        touch ~/.dput.cf -r $0
+
+        cat > ~/.mini-dinstall-${repo_name}.conf <<EOF
+[DEFAULT]
+archive_style=flat
+archivedir=$repo_dir
+architectures=all, i386, powerpc, sparc, amd64
+mail_on_success=false
+generate_release=true
+keep_old=true
+
+[stable]
+# enable uploading packages with anything in changelogs
+alias=old-stable,stable,testing,unstable,experimental,wheezy,wheezy-security,jessie,jessie-security,sid,trusty,xenial,yakkety,UNRELEASED
+EOF
+        touch ~/.mini-dinstall-${repo_name}.conf -r $0
+    elif [ "$REPO_TYPE" = 'yum' ]; then
+        createrepo_c "$repo_dir"
+    fi
+}
+
+
+add() {
+    local src name
+    src=$1
+    name=`basename "$src" | sed -e 's/_[0-9]\+.*//'`
+
+    echo "==== Adding $name ===="
+    if [ "$REPO_TYPE" = 'apt' ]; then
+        # upload invalides the gpg sign
+        rm -f "$REPO/$DEB_DISTRO/Release.gpg"
+        # buggy mini-dinstall?
+        rm -f "$REPO"/*.db
+        # another bug: sometimes Release file is not refreshed
+        rm -f "$REPO/$DEB_DISTRO/Release"
+
+        if [ "$do_sign" -eq 1 ]; then
+          dput_args=''
+        else
+          dput_args='-u'
+        fi
+        if [ "$PKG_TYPE" = 'artifact' ]; then
+          archive='artifacts'
+        else
+          archive='externals'
+        fi
+        dput -U $dput_args "$archive" "$src"
+    elif [ "$REPO_TYPE" = 'yum' ]; then
+        [ "$do_sign" -eq 1 ] && rpmsign --addsign "$src"
+        cp -vp "$src" "$REPO"/
+    fi
+    echo "==== Done $name ===="
+    was_package=1
+}
+
+
+#
+# sign the repository (and generate text information file)
+#
+finish() {
+    if [ "$REPO_TYPE" = 'apt' ]; then
+        if [ "$do_sign" -eq 1 ]; then
+            (cd "$REPO/$DEB_DISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+        fi
+    elif [ "$REPO_TYPE" = 'yum' ]; then
+        createrepo_c "$REPO"/
+    fi
+}
+
+
+usage() {
+    cat << EOF
+$0 [OPTIONS] [PACKAGES]
+
+OPTIONS are:
+  -h, --help ................ usage message
+  -c, ---clean .............. perform clean
+  -e, --external ............ use third-party repository (default is artifact)
+  -p, --platform PLATFORM ... build target platform (required)
+  -r, --setup-chroot ........ setup build repositories for mock/pbuilder
+  -s, --setup-system ........ setup build repositories for system
+  -S, --no-sign ............. don't sign packages/repositories
+
+PLATFORMS (OSFAMILY-VERSION-ARCH):
+  epel-7-x86_64
+  fedora-rawhide-x86_64
+  debian-8-x86_64
+  ubuntu-14-x86_64
+  ubuntu-16-x86_64
+
+Variables:
+  BUILD_TAG ... optional info from Jenkins (for repo files)
+  BUILD_URL ... optional info from Jenkins (for repo files)
+EOF
+}
+
+
+TEMP=`getopt --name repo --options cehp:rsS --longoptions clean,external,help,platform:,setup-chroot,setup-system,no-sign -- "$@"`
+if [ $? != 0 ] ; then echo "Terminating." >&2 ; exit 1 ; fi
+eval set -- "$TEMP"
+
+PKG_TYPE='artifact'
+REPO="$REPO_ARTIFACT"
+while true; do
+    case "$1" in
+        -h | --help )
+            usage
+            exit 0
+            ;;
+        -e | --external )
+            PKG_TYPE='external'
+            REPO="$REPO_EXTERNAL"
+            ;;
+        -c | --clean )
+            do_clean=1
+            ;;
+        -p | --platform )
+            PLATFORM=$2
+            shift
+            ;;
+        -r | --setup-chroot )
+            do_setup_chroot=1
+            ;;
+        -s | --setup-system )
+            do_setup_system=1
+            ;;
+        -S | --no-sign )
+            do_sign=0
+            ;;
+        -- )
+            shift
+            break
+            ;;
+        * )
+            break
+            ;;
+    esac
+    shift
+done
+
+if [ -z "$PLATFORM" ]; then
+    echo "Platform not specified"
+    exit 1
+fi
+
+OSFAMILY=`echo "$PLATFORM" | cut -f1 -d-`
+OSVER=`echo "$PLATFORM" | cut -f2 -d-`
+ARCH=`echo "$PLATFORM" | cut -f3 -d-`
+case "$OSFAMILY" in
+    epel)
+        REPO_TYPE='yum'
+        ;;
+    fedora)
+        REPO_TYPE='yum'
+        ;;
+    debian|ubuntu)
+        REPO_TYPE='apt'
+
+        case "$OSFAMILY-$OSVER" in
+          debian-6) distcodename='squeeze' ;;
+          debian-7) distcodename='wheezy' ;;
+          debian-8) distcodename='jessie' ;;
+          debian-9) distcodename='stretch' ;;
+          debian-*) distcodename='sid' ;;
+          ubuntu-12) distcodename='precise' ;;
+          ubuntu-14) distcodename='trusty' ;;
+          ubuntu-16) distcodename='xenial' ;;
+          ubuntu-*) distcodename='yakkety' ;;
+        esac
+        ;;
+esac
+
+
+# ==== clean ====
+# (if requested)
+if [ "$do_clean" -eq 1 ]; then
+    rm -rfv "$REPO_ARTIFACT"
+    rm -rfv "$REPO_EXTERNAL"
+
+    if [ -z "$1" ]; then
+      exit 0
+    fi
+fi
+
+
+# ==== setup ====
+# (repository tools always, build tools if requested)
+rm -f ~/.dput.cf ~/.mini-dinstall*.conf
+repo_setup 'artifacts' "$REPO_ARTIFACT"
+repo_setup 'externals' "$REPO_EXTERNAL"
+
+if [ "$REPO_TYPE" = 'apt' ] ; then
+  debrepo_externals=`(cd "$REPO_EXTERNAL"; pwd)`
+  debrepo_artifacts=`(cd "$REPO_ARTIFACT"; pwd)`
+fi
+
+if [ "$do_setup_chroot" -eq 1 ]; then
+    if [ "$REPO_TYPE" = 'apt' ] ; then
+      repoline=''
+      if [ -f ./repos.sh ]; then
+          repoline=`. ./repos.sh | egrep -v '^\s*#|^\s*$' | tr '\n' '|'`
+      fi
+      repoline="${repoline}deb file://$debrepo_externals/ $DEB_DISTRO/|"
+      repoline="${repoline}deb file://$debrepo_artifacts/ $DEB_DISTRO/"
+      sed -i ~/.pbuilderrc -e "s,^\(OTHERMIRROR\)\s*=.*,\1='$repoline',"
+      sed -i ~/.pbuilderrc -e "s,^\(BINDMOUNTS\)\s*=.*,\1='$REPO_ARTIFACT $REPO_EXTERNAL',"
+    elif  [ "$REPO_TYPE" = 'yum' ] ; then
+      if [ ! -f "${PLATFORM}.cfg" ]; then
+          sed -e 's/^"""\s*$//' "/etc/mock/${PLATFORM}.cfg" > "${PLATFORM}.cfg"
+          if [ -f ./repos.sh ]; then
+              . ./repos.sh >> "${PLATFORM}.cfg"
+              echo >> "${PLATFORM}.cfg"
+          fi
+          cat >> "${PLATFORM}.cfg" <<EOF
+[local-artifacts]
+name=Local Artifacts
+baseurl=file://$REPO_ARTIFACT
+protect=1
+priority=40
+enabled=1
+
+[local-externals]
+name=Local Externals
+baseurl=file://$REPO_EXTERNAL
+protect=1
+priority=40
+enabled=1
+"""
+EOF
+          # to use cached chroots
+          touch -d 'last week' "${PLATFORM}.cfg"
+      fi
+    fi
+fi
+
+if [ "$do_setup_system" -eq 1 ]; then
+    if [ "$REPO_TYPE" = 'apt' ] ; then
+        rm -f "$APT_REPOFILE"
+        if [ -f ./repos.sh ]; then
+            . ./repos.sh | egrep -v '^\s*#|^\s*$' > "$APT_REPOFILE"
+        fi
+        cat >> "$APT_REPOFILE" << EOF
+deb file://$debrepo_externals/ $DEB_DISTRO/
+deb file://$debrepo_artifact/ $DEB_DISTRO/
+EOF
+    elif [ "$REPO_TYPE" = 'yum' ] ; then
+        rm -f "$YUM_REPOFILE"
+        if [ -f ./repos.sh ]; then
+            . ./repos.sh >> "$YUM_REPOFILE"
+            echo >> "$YUM_REPOFILE"
+        fi
+        cat >> "$YUM_REPOFILE" << EOF
+[local-artifacts]
+name=Local Artifacts
+baseurl=file://$REPO_ARTIFACT
+protect=1
+priority=40
+enabled=1
+
+[local-externals]
+name=Local Externals
+baseurl=file://$REPO_EXTERNAL
+protect=1
+priority=40
+enabled=1
+EOF
+    fi
+fi
+
+
+# ==== add packages ====
+while [ -n "$1" ]; do
+    add "$1"
+    shift
+done
+
+
+# ==== finalize ====
+[ "$was_package" -eq 1 ] && finish
+
+# repo files for artifacts, if we know Jenkins URLs
+if [ "$PKG_TYPE" = 'artifact' -a -n "$BUILD_TAG" -a -n "$BUILD_URL" ]; then
+    # proper URL encoding (commas)
+    BUILD_URL=`echo "${BUILD_URL}" | sed -e 's/,/%2C/g'`
+    BUILD_LATEST_URL=`echo "${BUILD_URL}" | sed -e 's,/[0-9][0-9]*/$,/lastSuccessfulBuild/,'`
+
+    if [ "$REPO_TYPE" = 'apt' ]; then
+        cat <<EOF > build.list
+deb ${BUILD_URL}artifact/results/$OSFAMILY/ $DEB_DISTRO/
+deb-src ${BUILD_URL}artifact/results/$OSFAMILY/ $DEB_DISTRO/
+EOF
+        cat <<EOF > latest.list
+deb ${BUILD_LATEST_URL}artifact/results/$OSFAMILY/ $DEB_DISTRO/
+deb-src ${BUILD_LATEST_URL}artifact/results/$OSFAMILY/ $DEB_DISTRO/
+EOF
+    elif [ "$REPO_TYPE" = 'yum' ]; then
+        id=`echo "$BUILD_TAG" | sed -e 's/[=\/]/-/g' -e 's/,/%2C/g'`
+        cat <<EOF > build.repo
+[$id]
+name=$BUILD_TAG
+baseurl=${BUILD_URL}artifact/results
+protect=1
+enabled=1
+gpgcheck=1
+gpgkey=$GPG_KEY_URL
+priority=40
+EOF
+        cat <<EOF > latest.repo
+[$id]
+name=$BUILD_TAG
+baseurl=${BUILD_LATEST_URL}artifact/results
+protect=1
+enabled=1
+gpgcheck=1
+gpgkey=$GPG_KEY_URL
+priority=40
+EOF
+    fi
+fi

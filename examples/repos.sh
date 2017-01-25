@@ -4,11 +4,23 @@ if echo "$EXTERNAL_REPOS" | grep -q "\<$PLATFORM\>"; then
 
 	case $PLATFORM in
 
-	epel*|fedora*)
+	epel*)
 		cat <<EOF
 [EGI-external]
 name=EMI-3 External Dependencies
-baseurl=http://scientific.zcu.cz/repos/EGI-external/$REPO-$ARCH
+baseurl=http://scientific.zcu.cz/repos/EGI-external/sl${OSVER}-$ARCH
+gpgkey=http://scientific.zcu.cz/repos/RPM-GPG-KEY-valtri
+protect=1
+priority=40
+enabled=1
+EOF
+		;;
+
+	fedora*)
+		cat <<EOF
+[EGI-external]
+name=EMI-3 External Dependencies
+baseurl=http://scientific.zcu.cz/repos/EGI-external/fc${OSVER}-$ARCH
 gpgkey=http://scientific.zcu.cz/repos/RPM-GPG-KEY-valtri
 protect=1
 priority=40

@@ -11,21 +11,21 @@
 # moduser -a -A mock $LOGIN
 # usermod -a -G mock $LOGIN
 #
-# tools: mock rpm-build rpm-sign
+# Tools: mock rpm-build (see also 'pkg-repo' script)
 #
 # ==== pbuilder preparation ====
 #
 # ln -s ~jenkins/.pbuilderrc /root/.pbuilderrc
 # pbuilder --create --hookdir `pwd`/pbuilder --distribution jessie --basetgz /var/cache/pbuilder/debian-8-x86_64.tgz
 #
-# tools: dput mini-dinstall pbuilder
+# Tools: pbuilder (see also 'pkg-repo' script)
 #
 
 CMD='build'
-DEBDISTRO=${DEBDISTRO:-stable}
-DEBREPO_MAIN=${DEBREPO_MAIN:-~/debian}
-DEBREPO_DEPS=${DEBREPO_DEPS:-~/debian-externals}
+DEB_DISTRO=${DEB_DISTRO:-stable}
+# GPG key URL (only for local yum repos)
 GPG_KEY_URL='http://scientific.zcu.cz/repos/jenkins-builder.asc'
+# build GPG key ID (pbuilder only)
 KEY_ID=${KEY_ID:-'64FA8786'}
 LAUNCHDIR=`dirname "$0"`
 LAUNCHDIR=`(cd "$LAUNCHDIR"; pwd)`
@@ -36,6 +36,13 @@ do_sign=1
 # workaround bugs for Debian >= 7
 pbuilder_bug=1
 wait_lock=300
+
+# for 'pkg-repo' script
+# (BUILD_* variables go from Jenkins)
+export BUILD_TAG
+export BUILD_URL
+export DEB_DISTRO
+export GPG_KEY_URL
 
 [ -f "$LAUNCHDIR/config.sh" ] && . "$LAUNCHDIR/config.sh"
 
@@ -54,9 +61,12 @@ mock_build() {
 
     $BUILD_CMD --rebuild "$src"
 
-    [ "$do_sign" -eq 1 ] && rpmsign --addsign reports/*.rpm
-    mv reports/*.rpm results/
-    createrepo_c results
+    if [ "$do_sign" -eq 1 ]; then
+      "$LAUNCHDIR"/pkg-repo --platform "$PLATFORM" reports/*.rpm
+    else
+      "$LAUNCHDIR"/pkg-repo --platform "$PLATFORM" --no-sign reports/*.rpm
+    fi
+    rm -f reports/*.rpm
 
     rm -f "reports/fail.${name}"
     rm -f reports/root.log reports/build.log
@@ -78,20 +88,12 @@ pbuilder_build() {
     (cd "$builddir"; $BUILD_CMD)
     mv ./*.build reports/
     changes=`find results/pbuilder -type f -name "${name}_*.changes" | head -n 1`
-    # upload invalides the gpg sign
-    rm -f "$DEBREPO_MAIN/$DEBDISTRO/Release.gpg"
-    # buggy mini-dinstall?
-    rm -f "$DEBREPO_MAIN"/*.db
-    # another bug: sometimes Release file is not refreshed
-    rm -f "$DEBREPO_MAIN/$DEBDISTRO/Release"
+
     if [ "$do_sign" -eq 1 ]; then
-        dput -U local $changes
-        (cd "$DEBREPO_MAIN/$DEBDISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+      "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" $changes
     else
-        dput -u -U local $changes
+      "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" --no-sign $changes
     fi
-    # workaround for Debian >= 10 and buildinfo files
-    cp -vp ${name}_*.buildinfo "$DEBREPO_MAIN/$DEBDISTRO/" || :
     rm -f "reports/fail.${name}"
     echo "$name" >> reports/success.log
     echo "==== Done $name ===="
@@ -105,24 +107,12 @@ add() {
     name=`basename "$src" | sed -e 's/_[0-9]\+.*//'`
 
     echo "==== Adding external $name ===="
-    if test "$BUILD_TYPE" = "pbuilder"; then
-         # upload invalides the gpg sign
-         rm -f "$DEBREPO_DEPS/$DEBDISTRO/Release.gpg"
-         # buggy mini-dinstall?
-         rm -f "$DEBREPO_DEPS"/*.db
-         # another bug: sometimes Release file is not refreshed
-         rm -f "$DEBREPO_DEPS/$DEBDISTRO/Release"
-         if [ "$do_sign" -eq 1 ]; then
-            dput -U local_externals "$src"
-         else
-            dput -u -U local_externals "$src"
-         fi
+    if [ "$do_sign" -eq 1 ]; then
+      "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" --external "$src"
     else
-            cp -p "$src" externals/
-            createrepo_c externals
+      "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" --external --no-sign "$src"
     fi
     echo "==== Done external $name ===="
-    was_external=1
 }
 
 
@@ -165,7 +155,7 @@ OPTIONS are:
   -S, --no-sign ............. don't sign packages
   -w, --wait ................ wait time for build lock [300]
 
-PLATFORMS (FAMILY-VERSION-ARCH):
+PLATFORMS (OSFAMILY-VERSION-ARCH):
   epel-7-x86_64
   fedora-rawhide-x86_64
   debian-8-x86_64
@@ -263,72 +253,29 @@ case "$OSFAMILY" in
         ;;
 esac
 
-# clean (if requested)
+# ==== clean (if requested) ====
 if [ "$do_clean" -eq 1 ]; then
-    for d in results externals reports; do
+    for d in results reports; do
         [ -d $d ] && (rm -rfv $d || sudo rm -rfv $d)
     done
 
-    if [ "$BUILD_TYPE" = "pbuilder" ] ; then
-        rm -rfv "$DEBREPO_MAIN"/* "$DEBREPO_DEPS"/*
-    fi
+    "$LAUNCHDIR"/pkg-repo --platform "$PLATFORM" --clean
 
     if [ -z "$1" ]; then
       exit 0
     fi
 fi
 
+
 # setup
-mkdir reports 2>/dev/null || :
+mkdir reports results 2>/dev/null || :
 [ -f ./repos.sh ] || cp -p "$LAUNCHDIR"/repos.sh .
 if [ "$BUILD_TYPE" = "pbuilder" ] ; then
     mkdir pbuilder 2>/dev/null || :
     cp -pn "$LAUNCHDIR"/pbuilder/* pbuilder/
-    mkdir results 2>/dev/null || :
     if [ "$pbuilder_bug" -eq 1 ]; then
       # required for --use-pdebuild-internal
       mkdir results/pbuilder 2>/dev/null || :
-    fi
-
-    # tune configured external repositories
-    debrepo_deps=`(cd "$DEBREPO_DEPS"; pwd)`
-    debrepo_main=`(cd "$DEBREPO_MAIN"; pwd)`
-    repoline=''
-    if [ -f ./repos.sh ]; then
-        repoline=`. ./repos.sh | egrep -v '^\s*#|^\s*$' | tr '\n' '|'`
-    fi
-    repoline="${repoline}deb file://$debrepo_deps/ $DEBDISTRO/|"
-    repoline="${repoline}deb file://$debrepo_main/ $DEBDISTRO/"
-    sed -i ~/.pbuilderrc -e "s,^\(OTHERMIRROR\)\s*=.*,\1='$repoline',"
-
-    # fragile mini-dinstall
-    if [ ! -d "$DEBREPO_MAIN/$DEBDISTRO" ]; then
-        mkdir -p "$DEBREPO_MAIN/mini-dinstall/incoming"
-        mkdir -p "$DEBREPO_MAIN/$DEBDISTRO"
-        touch "$DEBREPO_MAIN/$DEBDISTRO/Packages"
-        # Debian <= 9: "No sections in Release file" on empty Release file
-        # Debian >= 10: any Release file required
-        if [ "${OSFAMILY}" = "debian" -a "${OSVER}" -ge "10" ]; then
-            touch "$DEBREPO_MAIN/$DEBDISTRO/Release"
-            # signing required since Debian 10
-            if [ "$do_sign" -eq 1 ]; then
-                (cd "$DEBREPO_MAIN/$DEBDISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
-            fi
-        fi
-    fi
-    if [ ! -d "$DEBREPO_DEPS/$DEBDISTRO" ]; then
-        mkdir -p "$DEBREPO_DEPS/mini-dinstall/incoming"
-        mkdir -p "$DEBREPO_DEPS/$DEBDISTRO"
-        touch "$DEBREPO_DEPS/$DEBDISTRO/Packages"
-        # Debian <= 9: "No sections in Release file" on empty Release file
-        # Debian >= 10: any Release file required
-        if [ "${OSFAMILY}" = "debian" -a "${OSVER}" -ge "10" ]; then
-            touch "$DEBREPO_DEPS/$DEBDISTRO/Release"
-            # signing required since Debian 10
-            if [ "$do_sign" -eq 1 ]; then
-                (cd "$DEBREPO_DEPS/$DEBDISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
-            fi
-        fi
     fi
 else
     # mock requires user path
@@ -340,48 +287,19 @@ else
     for f in logging.ini site-defaults.cfg; do
       [ -f /etc/mock/$f ] && cp -p /etc/mock/$f .
     done
-
-    if [ ! -d results ]; then
-        mkdir results
-        createrepo_c results
-    fi
-    if [ ! -d externals ]; then
-        mkdir externals
-        createrepo_c externals
-    fi
-    if [ ! -f "${PLATFORM}.cfg" ]; then
-        sed -e 's/^"""\s*$//' "/etc/mock/${PLATFORM}.cfg" > "${PLATFORM}.cfg"
-        if [ -f ./repos.sh ]; then
-            . ./repos.sh >> "${PLATFORM}.cfg"
-            echo >> "${PLATFORM}.cfg"
-        fi
-        cat >> "${PLATFORM}.cfg" <<EOF
-[local]
-name=Local
-baseurl=file://`pwd`/results
-protect=1
-priority=40
-enabled=1
-
-[local-ext]
-name=External
-baseurl=file://`pwd`/externals
-protect=1
-priority=40
-enabled=1
-"""
-EOF
-        # to use cached chroots
-        touch -d 'last week' "${PLATFORM}.cfg"
-    fi
 fi
+"$LAUNCHDIR"/pkg-repo --platform "$PLATFORM" --setup-chroot
 
+
+# ==== chroot tarballs ====
 if [ "$do_image" -eq 1 ]; then
     lock "prepare image $PLATFORM"
     $IMAGE_CMD
     unlock
 fi
 
+
+# ==== build ====
 lock "build on $PLATFORM"
 while [ -n "$1" ]; do
     case "$CMD" in
@@ -400,8 +318,8 @@ while [ -n "$1" ]; do
 done
 unlock
 
-# copy the final repository at the finish (debian) + listing file
-# (signing is continuous)
+
+# ==== publish results ====
 if [ -n "$was_build" ]; then
     # admit all the build errors and warnings to everyone
     chmod a+r reports/* || true
@@ -409,60 +327,10 @@ if [ -n "$was_build" ]; then
     if [ "$BUILD_TYPE" = "pbuilder" ]; then
         sudo rm -rfv results/pbuilder
         mkdir "results/$OSFAMILY/" 2>/dev/null || :
-        cp -rp "$DEBREPO_MAIN/$DEBDISTRO" "results/$OSFAMILY/"
-
-        (cd "results/$OSFAMILY/$DEBDISTRO"; ls -1 *.tar.gz *.tar.xz *.dsc *.changes *.deb | sort) > list.txt
+        cp -rvp ~/repository-artifacts/"$DEB_DISTRO" "results/$OSFAMILY/"
+        (cd "results/$OSFAMILY/$DEB_DISTRO"; ls -1 *.tar.gz *.tar.xz *.dsc *.changes *.deb 2>/dev/null| sort) > list.txt
     else
-        (cd results; ls -1 *.rpm | sort) > list.txt
-    fi
-fi
-
-# mass sign externals repository at the finish
-# (copying not needed)
-if [ -n "$was_external" ]; then
-    if [ "$BUILD_TYPE" = "pbuilder" ]; then
-        [ "$do_sign" -eq 1 ] && (cd "$DEBREPO_DEPS/$DEBDISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
-    else
-        [ "$do_sign" -eq 1 ] && rpmsign --addsign externals/*.rpm
-        createrepo_c externals
-    fi
-fi
-
-# repo files, if we know Jenkins URLs
-if [ -n "$BUILD_TAG" -a -n "$BUILD_URL" ]; then
-    # proper URL encoding (commas)
-    BUILD_URL=`echo "${BUILD_URL}" | sed -e 's/,/%2C/g'`
-    BUILD_LATEST_URL=`echo "${BUILD_URL}" | sed -e 's,/[0-9][0-9]*/$,/lastSuccessfulBuild/,'`
-
-    if [ "$BUILD_TYPE" = "pbuilder" ]; then
-        cat <<EOF > build.list
-deb ${BUILD_URL}artifact/results/$OSFAMILY/ $DEBDISTRO/
-deb-src ${BUILD_URL}artifact/results/$OSFAMILY/ $DEBDISTRO/
-EOF
-        cat <<EOF > latest.list
-deb ${BUILD_LATEST_URL}artifact/results/$OSFAMILY/ $DEBDISTRO/
-deb-src ${BUILD_LATEST_URL}artifact/results/$OSFAMILY/ $DEBDISTRO/
-EOF
-    else
-        cat <<EOF > build.repo
-[`echo "$BUILD_TAG" | sed -e 's/[=\/]/-/g' -e 's/,/%2C/g'`]
-name=$BUILD_TAG
-baseurl=${BUILD_URL}artifact/results
-protect=1
-enabled=1
-gpgcheck=1
-gpgkey=$GPG_KEY_URL
-priority=40
-EOF
-        cat <<EOF > latest.repo
-[`echo "$BUILD_TAG" | sed -e 's/[=\/]/-/' -e 's/,/%2C/g'`]
-name=$BUILD_TAG
-baseurl=${BUILD_LATEST_URL}artifact/results
-protect=1
-enabled=1
-gpgcheck=1
-gpgkey=$GPG_KEY_URL
-priority=40
-EOF
+        cp -rvp ~/repository-artifacts/* "results/"
+        (cd results; ls -1 *.rpm 2>/dev/null | sort) > list.txt
     fi
 fi

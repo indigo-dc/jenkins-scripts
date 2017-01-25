@@ -58,6 +58,22 @@ It requires configuration and created chroot environment:
 
     pkg-build-mock -p epel-7-x86_64 --image
 
+### `pkg-repo`
+
+Helper script (used also by `pkg-build-mock`) to upload packages into local repositories. It also generate repo-files for Jenkins, if `$BUILD_TAG` and `$BUILD_URL` environment variables are available.
+
+Example:
+
+    pkg-repo -p debian-8-x86_64 --clean
+    pkg-repo -p debian-8-x86_64 --external --add cache/*.changes
+    pkg-repo -p debian-8-x86_64 --add results/*.changes
+
+    pkg-repo -p epel-7-x86_64 --clean
+    pkg-repo -p epel-7-x86_64 --external --add cache/*.rpm
+    pkg-repo -p epel-7-x86_64 --add results/*.rpm
+
+There are also options `--setup-system` and `--setup-chroot` to setup local repositories to be used by the build process.
+
 #### External repositories
 
 They are specified by *repos.sh* generator. *repos.sh* file in the current build directory takes precedence, otherwise generator from the scripts base directory is used.
