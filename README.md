@@ -58,9 +58,29 @@ It requires configuration and created chroot environment:
 
     pkg-build-mock -p epel-7-x86_64 --image
 
+#### Pbuilder (Debian, Ubuntu)
+
+Additional pbuilder hook scripts can be installed into *pbuilder/* subdirectory in current build directory.
+
+### `pkg-build-root`
+
+Build binary packages from prepared sources packages using the system itself.
+
+It is expected to be launched from virtual machine or a container, although not required. Privileged operations may be optionally called using sudo-like command, so the whole `pkg-build-root` could be launched under unprivileged user.
+
+Example:
+
+    pkg-build-root -p debian-8-x86_64 -r sudo --setup --clean
+    pkg-build-root -p debian-8-x86_64 -r sudo --add cache/*.changes
+    pkg-build-root -p debian-8-x86_64 -r sudo --build package_*.dsc
+
+    pkg-build-root -p epel-7-x86_64 -r sudo --setup --clean
+    pkg-build-root -p epel-7-x86_64 -r sudo --add cache/*.rpm
+    pkg-build-root -p epel-7-x86_64 -r sudo --build package-*.src.rpm
+
 ### `pkg-repo`
 
-Helper script (used also by `pkg-build-mock`) to upload packages into local repositories. It also generate repo-files for Jenkins, if `$BUILD_TAG` and `$BUILD_URL` environment variables are available.
+Helper script (used also by `pkg-build-mock` and `pkg-build-root`) to upload packages into local repositories. It also generate repo-files for Jenkins, if `$BUILD_TAG` and `$BUILD_URL` environment variables are available.
 
 Example:
 
@@ -77,10 +97,6 @@ There are also options `--setup-system` and `--setup-chroot` to setup local repo
 #### External repositories
 
 They are specified by *repos.sh* generator. *repos.sh* file in the current build directory takes precedence, otherwise generator from the scripts base directory is used.
-
-#### Pbuilder (Debian, Ubuntu)
-
-Additional pbuilder hook scripts can be installed into *pbuilder/* subdirectory in current build directory.
 
 ### `pkg-buildsrc-deb`
 

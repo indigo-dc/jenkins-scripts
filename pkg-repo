@@ -299,11 +299,11 @@ if [ "$do_setup_system" -eq 1 ]; then
     if [ "$REPO_TYPE" = 'apt' ] ; then
         rm -f "$APT_REPOFILE"
         if [ -f ./repos.sh ]; then
-            . ./repos.sh | egrep -v '^\s*#|^\s*$' > "$APT_REPOFILE"
+            . ./repos.sh | egrep -v '^\s*#|^\s*$' > "$APT_REPOFILE" || :
         fi
         cat >> "$APT_REPOFILE" << EOF
 deb file://$debrepo_externals/ $DEB_DISTRO/
-deb file://$debrepo_artifact/ $DEB_DISTRO/
+deb file://$debrepo_artifacts/ $DEB_DISTRO/
 EOF
     elif [ "$REPO_TYPE" = 'yum' ] ; then
         rm -f "$YUM_REPOFILE"

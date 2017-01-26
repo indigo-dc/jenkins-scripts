@@ -1,0 +1,271 @@
+#! /bin/bash -xe
+
+#
+# Build binary packages from prepared sources packages using the system itself.
+#
+# Local build and local external repositories are supported.
+#
+
+CMD='build'
+DEB_DISTRO=${DEB_DISTRO:-stable}
+# GPG key URL (only for local yum repos)
+GPG_KEY_URL='http://scientific.zcu.cz/repos/jenkins-builder.asc'
+# build GPG key ID (pbuilder only)
+KEY_ID=${KEY_ID:-'64FA8786'}
+# place artifact repository directly into result place
+REPO_ARTIFACT=${REPO_ARTIFACT:-~/results}
+LAUNCHDIR=`dirname "$0"`
+LAUNCHDIR=`(cd "$LAUNCHDIR"; pwd)`
+do_clean=0
+do_setup=0
+do_sign=1
+
+# for 'pkg-repo' script
+# (BUILD_* variables go from Jenkins)
+export BUILD_TAG
+export BUILD_URL
+export DEB_DISTRO
+export GPG_KEY_URL
+export REPO_ARTIFACT
+
+[ -f "$LAUNCHDIR/config.sh" ] && . "$LAUNCHDIR/config.sh"
+
+
+rpm_build() {
+    local src name
+    src="$1"
+    name=`basename "$src" | sed -e 's/-[0-9].*//'`
+    topdir=`rpm --eval '%_topdir'`
+
+    echo "==== Building $name ==== "
+    touch reports/"fail.${name}"
+    $INSTALL_DEPS_CMD "$src" 2>&1 | tee reports/"${name}-root.log"
+    rpmbuild --rebuild "$src" 2>&1 | tee reports/"${name}-build.log"
+    if [ "$do_sign" -ne 1 ]; then
+        args=''
+    else
+        args='--no-sign'
+    fi
+    find "$topdir" -type f -exec mv -v {} . \; | xargs -t "$LAUNCHDIR"/pkg-repo --platform "$PLATFORM" $args
+    rm -f reports/"fail.${name}"
+    echo "$name" >> reports/success.log
+    echo "==== Done $name ===="
+    was_build=1
+}
+
+
+deb_build() {
+    local src name builddir changes
+    src="$1"
+    name=`basename "$src" | sed -e 's/_[0-9].*//'`
+
+    echo "==== Building $name ==== "
+    touch "reports/fail.${name}"
+    $INSTALL_DEPS_CMD "$src" 2>&1 | tee reports/"${name}-root.log"
+    dpkg-source -x "$src"
+    builddir=`find . -maxdepth 1 -type d -name "${name}-*" | head -n 1`
+    if [ "$do_sign" -eq 1 ]; then
+        args=''
+        if [ -n "$KEY_ID" ]; then
+            args="-k$KEY_ID"
+        fi
+    else
+      args='-uc -us'
+    fi
+    (cd "$builddir"; dpkg-buildpackage $args) 2>&1 | tee reports/"${name}-build.log"
+    changes=`find . -type f -name "${name}_*.changes" | head -n 1`
+
+    if [ "$do_sign" -eq 1 ]; then
+      "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" $changes
+    else
+      "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" --no-sign $changes
+    fi
+    rm -f "reports/fail.${name}"
+    echo "$name" >> reports/success.log
+    echo "==== Done $name ===="
+    was_build=1
+}
+
+
+add() {
+    local src name
+    src=$1
+    name=`basename "$src" | sed -e 's/_[0-9]\+.*//'`
+
+    echo "==== Adding external $name ===="
+    if [ "$do_sign" -eq 1 ]; then
+      "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" --external "$src"
+    else
+      "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" --external --no-sign "$src"
+    fi
+    echo "==== Done external $name ===="
+}
+
+
+TEMP=`getopt --name pkg-build-root --options abcd:hp:r:sS --longoptions add,build,clean,dir,help,no-sign,platform:,root-cmd:,setup -- "$@"`
+if [ $? != 0 ] ; then echo "Terminating." >&2 ; exit 1 ; fi
+eval set -- "$TEMP"
+
+usage() {
+    cat << EOF
+$0 [OPTIONS]
+
+OPTIONS are:
+  -h, --help ................ usage message
+  -a, --add ................. add external dependencies (.rpm, .changes)
+  -b, --build ............... perform build (default) (.spec, .dsc)
+  -c, --clean ............... perform clean
+  -d, --dir ................. working directory for build
+  -p, --platform PLATFORM ... build target platform (required)
+  -r, --root-cmd SUDO-CMD ... call the SUDO-CDM for privileges commands
+  -s, --setup ............... performs setup
+  -S, --no-sign ............. don't sign packages
+
+PLATFORMS (OSFAMILY-VERSION-ARCH):
+  epel-7-x86_64
+  fedora-rawhide-x86_64
+  debian-8-x86_64
+  ubuntu-14-x86_64
+EOF
+}
+
+while true; do
+    case "$1" in
+        -h | --help )
+            usage
+            exit 0
+            ;;
+        -a | --add )
+            CMD='add'
+            ;;
+        -b | --build )
+            CMD='build'
+            ;;
+        -c | --clean )
+            do_clean=1
+            ;;
+        -d | --dir )
+            cd "${2}"
+            shift
+            ;;
+        -p | --platform )
+            PLATFORM=$2
+            shift
+            ;;
+        -r | --root-cmd )
+            SUDO=$2
+            shift
+            ;;
+        -s | --setup )
+            do_setup=1
+            ;;
+        -S | --no-sign )
+            do_sign=0
+            ;;
+        -- )
+            shift
+            break
+            ;;
+        * )
+            break
+            ;;
+    esac
+    shift
+done
+
+if [ -z "$PLATFORM" ]; then
+    echo "Platform not specified"
+    exit 1
+fi
+
+OSFAMILY=`echo "$PLATFORM" | cut -f1 -d-`
+OSVER=`echo "$PLATFORM" | cut -f2 -d-`
+ARCH=`echo "$PLATFORM" | cut -f3 -d-`
+case "$OSFAMILY" in
+    epel)
+        BUILD_TYPE='rpm'
+        INSTALL_CMD="$SUDO yum install -y"
+        INSTALL_DEPS_CMD="$SUDO yum-builddep"
+        PACKAGES='createrepo_c gnupg rpm-build rpm-sign yum-utils'
+        ;;
+    fedora)
+        BUILD_TYPE='rpm'
+        INSTALL_CMD="$SUDO dnf install -y"
+        INSTALL_DEPS_CMD="$SUDO dnf builddep"
+        PACKAGES='createrepo_c gnupg rpm-build rpm-sign dnf-plugins-core'
+        ;;
+    debian|ubuntu)
+        BUILD_TYPE='deb'
+        INSTALL_CMD="$SUDO apt-get install -y"
+        INSTALL_DEPS_CMD="$SUDO mk-build-deps -y -i"
+        PACKAGES='dput gnupg devscripts equivs mini-dinstall'
+
+        case "$OSFAMILY-$OSVER" in
+          debian-6) distcodename='squeeze' ;;
+          debian-7) distcodename='wheezy' ;;
+          debian-8) distcodename='jessie' ;;
+          debian-9) distcodename='stretch' ;;
+          debian-*) distcodename='sid' ;;
+          ubuntu-12) distcodename='precise' ;;
+          ubuntu-14) distcodename='trusty' ;;
+          ubuntu-*) distcodename='xenial' ;;
+        esac
+        ;;
+esac
+
+# pre-clean the system (belongs to pkg-repo)
+$SUDO rm -fv /etc/apt/sources.list.d/local-build.list /etc/yum.repos.d/local-build.repo
+
+# ==== setup (if requested) ====
+if [ "$do_setup" -eq 1 ]; then
+    if [ -n "$GPG_KEY_URL" -a "$BUILD_TYPE" = 'deb' ]; then
+      $SUDO apt-key adv --fetch-keys "$GPG_KEY_URL" || :
+    fi
+    [ "$BUILD_TYPE" = 'deb' ] && $SUDO apt-get update
+    $INSTALL_CMD $PACKAGES
+fi
+
+
+# ==== clean (if requested) ====
+if [ "$do_clean" -eq 1 ]; then
+    for d in results reports; do
+        [ -d $d ] && (rm -rfv $d || sudo rm -rfv $d)
+    done
+fi
+
+
+mkdir reports 2>/dev/null || :
+[ -f ./repos.sh ] || cp -p "$LAUNCHDIR"/repos.sh .
+$SUDO "$LAUNCHDIR"/pkg-repo --platform "$PLATFORM" --setup-system
+$SUDO "$LAUNCHDIR"/pkg-repo --platform "$PLATFORM" --clean
+"$LAUNCHDIR"/pkg-repo --platform "$PLATFORM"
+
+
+# ==== build ====
+while [ -n "$1" ]; do
+    case "$CMD" in
+        add)
+            add "$1"
+            ;;
+        build)
+            if [ "$BUILD_TYPE" = 'deb' ]; then
+                deb_build "$1"
+            else
+                rpm_build "$1"
+            fi
+            ;;
+    esac
+    shift
+done
+
+
+# ==== publish results ====
+if [ -n "$was_build" ]; then
+    if [ "$BUILD_TYPE" = "deb" ]; then
+        mkdir "results/$OSFAMILY/" 2>/dev/null || :
+        cp -rvp results/"$DEB_DISTRO" "results/$OSFAMILY/"
+        (cd "results/$OSFAMILY/$DEB_DISTRO"; ls -1 *.tar.gz *.tar.xz *.dsc *.changes *.deb 2>/dev/null| sort) > list.txt
+    elif  [ "$BUILD_TYPE" = "rpm" ]; then
+        (cd results; ls -1 *.rpm 2>/dev/null | sort) > list.txt
+    fi
+fi
