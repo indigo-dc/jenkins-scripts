@@ -136,7 +136,7 @@ unlock() {
 }
 
 
-TEMP=`getopt --name mock2 --options abcd:hip:Sw: --longoptions add,build,clean,dir,help,image,no-sign,platform:,wait: -- "$@"`
+TEMP=`getopt --name pkg-build-mock --options abcd:hip:Sw: --longoptions add,build,clean,dir,help,image,no-sign,platform:,wait: -- "$@"`
 if [ $? != 0 ] ; then echo "Terminating." >&2 ; exit 1 ; fi
 eval set -- "$TEMP"
 

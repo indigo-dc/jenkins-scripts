@@ -157,7 +157,7 @@ EOF
 }
 
 
-TEMP=`getopt --name repo --options cehp:rsS --longoptions clean,external,help,platform:,setup-chroot,setup-system,no-sign -- "$@"`
+TEMP=`getopt --name pkg-repo --options cehp:rsS --longoptions clean,external,help,platform:,setup-chroot,setup-system,no-sign -- "$@"`
 if [ $? != 0 ] ; then echo "Terminating." >&2 ; exit 1 ; fi
 eval set -- "$TEMP"
 
