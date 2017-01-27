@@ -227,6 +227,12 @@ case "$OSFAMILY" in
         BUILD_CMD="mock --configdir=. -r $PLATFORM --resultdir `pwd`/reports"
         IMAGE_CMD="mock -r $PLATFORM --init"
         REPO="fc$OSVER"
+
+        # for Fedora 26+ builds on EPEL 7
+        if ! `which dnf 2>/dev/null`; then
+            BUILD_CMD="$BUILD_CMD --yum"
+            IMAGE_CMD="$IMAGE_CMD --yum"
+        fi
         ;;
     debian|ubuntu)
         BUILD_TYPE='pbuilder'
