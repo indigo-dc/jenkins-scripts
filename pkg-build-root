@@ -41,7 +41,7 @@ rpm_build() {
     touch reports/"fail.${name}"
     $INSTALL_DEPS_CMD "$src" 2>&1 | tee reports/"${name}-root.log"
     rpmbuild --rebuild "$src" 2>&1 | tee reports/"${name}-build.log"
-    if [ "$do_sign" -ne 1 ]; then
+    if [ "$do_sign" -eq 1 ]; then
         args=''
     else
         args='--no-sign'
