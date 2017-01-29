@@ -13,7 +13,7 @@ GPG_KEY_URL='http://scientific.zcu.cz/repos/jenkins-builder.asc'
 # build GPG key ID (pbuilder only)
 KEY_ID=${KEY_ID:-'64FA8786'}
 # place artifact repository directly into result place
-REPO_ARTIFACT=${REPO_ARTIFACT:-~/results}
+REPO_ARTIFACT=${REPO_ARTIFACT:-`pwd`/results}
 LAUNCHDIR=`dirname "$0"`
 LAUNCHDIR=`(cd "$LAUNCHDIR"; pwd)`
 do_clean=0
