@@ -75,7 +75,7 @@ deb_build() {
       args='-uc -us'
     fi
     (cd "$builddir"; dpkg-buildpackage $args) 2>&1 | tee reports/"${name}-build.log"
-    changes=`find . -type f -name "${name}_*.changes" | head -n 1`
+    changes=`find . -maxdepth 1 -type f -name "${name}_*.changes" | head -n 1`
 
     if [ "$do_sign" -eq 1 ]; then
       "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" $changes
