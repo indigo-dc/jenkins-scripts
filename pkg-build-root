@@ -46,7 +46,7 @@ rpm_build() {
     else
         args='--no-sign'
     fi
-    find "$topdir" -type f -exec mv -v {} . \; | xargs -t "$LAUNCHDIR"/pkg-repo --platform "$PLATFORM" $args
+    find "$topdir" -type f | xargs -t "$LAUNCHDIR"/pkg-repo --platform "$PLATFORM" $args
     rm -f reports/"fail.${name}"
     echo "$name" >> reports/success.log
     echo "==== Done $name ===="
