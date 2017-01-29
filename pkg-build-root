@@ -62,6 +62,8 @@ deb_build() {
     echo "==== Building $name ==== "
     touch "reports/fail.${name}"
     $INSTALL_DEPS_CMD "$src" 2>&1 | tee reports/"${name}-root.log"
+    $SUDO dpkg -i ${name}-build-deps_*.deb 2>&1 | tee -a reports/"${name}-root.log" || :
+    $SUDO apt-get install -y -f 2>&1 | tee -a reports/"${name}-root.log"
     dpkg-source -x "$src"
     builddir=`find . -maxdepth 1 -type d -name "${name}-*" | head -n 1`
     if [ "$do_sign" -eq 1 ]; then
@@ -185,19 +187,19 @@ case "$OSFAMILY" in
     epel)
         BUILD_TYPE='rpm'
         INSTALL_CMD="$SUDO yum install -y"
-        INSTALL_DEPS_CMD="$SUDO yum-builddep"
+        INSTALL_DEPS_CMD="$SUDO yum-builddep -y"
         PACKAGES='createrepo_c gnupg rpm-build rpm-sign yum-utils'
         ;;
     fedora)
         BUILD_TYPE='rpm'
         INSTALL_CMD="$SUDO dnf install -y"
-        INSTALL_DEPS_CMD="$SUDO dnf builddep"
+        INSTALL_DEPS_CMD="$SUDO dnf builddep -y"
         PACKAGES='createrepo_c gnupg rpm-build rpm-sign dnf-plugins-core'
         ;;
     debian|ubuntu)
         BUILD_TYPE='deb'
         INSTALL_CMD="$SUDO apt-get install -y"
-        INSTALL_DEPS_CMD="$SUDO mk-build-deps -y -i"
+        INSTALL_DEPS_CMD="$SUDO mk-build-deps"
         PACKAGES='dput gnupg devscripts equivs mini-dinstall'
 
         case "$OSFAMILY-$OSVER" in
