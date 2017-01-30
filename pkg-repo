@@ -124,6 +124,7 @@ finish() {
         if [ "$do_sign" -eq 1 ]; then
             (cd "$REPO/$DEB_DISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
         fi
+        $SUDO apt-get update
     elif [ "$REPO_TYPE" = 'yum' ]; then
         createrepo_c "$REPO"/
     fi
@@ -139,8 +140,9 @@ OPTIONS are:
   -c, ---clean .............. perform clean
   -e, --external ............ use third-party repository (default is artifact)
   -p, --platform PLATFORM ... build target platform (required)
-  -r, --setup-chroot ........ setup build repositories for mock/pbuilder
+  -r, --root-cmd SUDO-CMD ... sudo command
   -s, --setup-system ........ setup build repositories for system
+  -t, --setup-chroot ........ setup build repositories for mock/pbuilder
   -S, --no-sign ............. don't sign packages/repositories
 
 PLATFORMS (OSFAMILY-VERSION-ARCH):
@@ -157,7 +159,7 @@ EOF
 }
 
 
-TEMP=`getopt --name pkg-repo --options cehp:rsS --longoptions clean,external,help,platform:,setup-chroot,setup-system,no-sign -- "$@"`
+TEMP=`getopt --name pkg-repo --options cehp:r:tsS --longoptions clean,external,help,platform:,root-cmd:,setup-chroot,setup-system,no-sign -- "$@"`
 if [ $? != 0 ] ; then echo "Terminating." >&2 ; exit 1 ; fi
 eval set -- "$TEMP"
 
@@ -180,7 +182,11 @@ while true; do
             PLATFORM=$2
             shift
             ;;
-        -r | --setup-chroot )
+        -r | --root-cmd )
+            SUDO=$2
+            shift
+            ;;
+        -t | --setup-chroot )
             do_setup_chroot=1
             ;;
         -s | --setup-system )
@@ -238,10 +244,6 @@ esac
 if [ "$do_clean" -eq 1 ]; then
     rm -rfv "$REPO_ARTIFACT"
     rm -rfv "$REPO_EXTERNAL"
-
-    if [ -z "$1" ]; then
-      exit 0
-    fi
 fi
 
 
@@ -297,27 +299,34 @@ fi
 
 if [ "$do_setup_system" -eq 1 ]; then
     if [ "$REPO_TYPE" = 'apt' ] ; then
-        rm -f "$APT_REPOFILE"
+        $SUDO rm -f "$APT_REPOFILE"
         if [ -f ./repos.sh ]; then
-            . ./repos.sh | egrep -v '^\s*#|^\s*$' > "$APT_REPOFILE" || :
+            . ./repos.sh | egrep -v '^\s*#|^\s*$' > /tmp/repo || :
+            $SUDO mv /tmp/repo "$APT_REPOFILE" || :
         fi
-        cat >> "$APT_REPOFILE" << EOF
+        $SUDO cat >> "$APT_REPOFILE" << EOF
 deb file://$debrepo_externals/ $DEB_DISTRO/
 deb file://$debrepo_artifacts/ $DEB_DISTRO/
 EOF
-    elif [ "$REPO_TYPE" = 'yum' ] ; then
-        rm -f "$YUM_REPOFILE"
-        if [ -f ./repos.sh ]; then
-            . ./repos.sh >> "$YUM_REPOFILE"
-            echo >> "$YUM_REPOFILE"
+        if [ "$do_sign" -eq 0 ]; then
+            echo "APT::Get::AllowUnauthenticated "true";" > /tmp/repo
+            $SUDO mv /tmp/repo /etc/apt/apt.conf.d/99local
         fi
-        cat >> "$YUM_REPOFILE" << EOF
+    elif [ "$REPO_TYPE" = 'yum' ] ; then
+        $SUDO rm -f "$YUM_REPOFILE"
+        if [ -f ./repos.sh ]; then
+            . ./repos.sh > /tmp/repo
+            echo >> /tmp/repo
+            $SUDO mv /tmp/repo "$YUM_REPOFILE"
+        fi
+        $SUDO cat >> "$YUM_REPOFILE" << EOF
 [local-artifacts]
 name=Local Artifacts
 baseurl=file://$REPO_ARTIFACT
 protect=1
 priority=40
 enabled=1
+gpgcheck=$do_sign
 
 [local-externals]
 name=Local Externals
@@ -325,6 +334,7 @@ baseurl=file://$REPO_EXTERNAL
 protect=1
 priority=40
 enabled=1
+gpgcheck=$do_sign
 EOF
     fi
 fi

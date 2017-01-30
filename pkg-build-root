@@ -8,12 +8,10 @@
 
 CMD='build'
 DEB_DISTRO=${DEB_DISTRO:-stable}
-# GPG key URL (only for local yum repos)
+# GPG key URL
 GPG_KEY_URL='http://scientific.zcu.cz/repos/jenkins-builder.asc'
 # build GPG key ID (pbuilder only)
 KEY_ID=${KEY_ID:-'64FA8786'}
-# place artifact repository directly into result place
-REPO_ARTIFACT=${REPO_ARTIFACT:-`pwd`/results}
 LAUNCHDIR=`dirname "$0"`
 LAUNCHDIR=`(cd "$LAUNCHDIR"; pwd)`
 do_clean=0
@@ -26,9 +24,9 @@ export BUILD_TAG
 export BUILD_URL
 export DEB_DISTRO
 export GPG_KEY_URL
-export REPO_ARTIFACT
 
 [ -f "$LAUNCHDIR/config.sh" ] && . "$LAUNCHDIR/config.sh"
+set -o pipefail
 
 
 rpm_build() {
@@ -40,13 +38,9 @@ rpm_build() {
     echo "==== Building $name ==== "
     touch reports/"fail.${name}"
     $INSTALL_DEPS_CMD "$src" 2>&1 | tee reports/"${name}-root.log"
-    rpmbuild --rebuild "$src" 2>&1 | tee reports/"${name}-build.log"
-    if [ "$do_sign" -eq 1 ]; then
-        args=''
-    else
-        args='--no-sign'
-    fi
-    find "$topdir" -type f -name \*.rpm | xargs -t "$LAUNCHDIR"/pkg-repo --platform "$PLATFORM" $args
+    rpm -ivh "$src" 2>&1 | tee reports/"${name}-build.log"
+    rpmbuild -ba "$topdir"/SPECS/"${name}.spec" 2>&1 | tee -a reports/"${name}-build.log"
+    find "$topdir" -type f -name \*.rpm | xargs -t "$LAUNCHDIR"/pkg-repo $REPO_ARGS
     rm -f reports/"fail.${name}"
     echo "$name" >> reports/success.log
     echo "==== Done $name ===="
@@ -77,11 +71,7 @@ deb_build() {
     (cd "$builddir"; dpkg-buildpackage $args) 2>&1 | tee reports/"${name}-build.log"
     changes=`find . -maxdepth 1 -type f -name "${name}_*.changes" | head -n 1`
 
-    if [ "$do_sign" -eq 1 ]; then
-      "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" $changes
-    else
-      "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" --no-sign $changes
-    fi
+    "$LAUNCHDIR"/pkg-repo $REPO_ARGS $changes
     rm -f "reports/fail.${name}"
     echo "$name" >> reports/success.log
     echo "==== Done $name ===="
@@ -95,16 +85,12 @@ add() {
     name=`basename "$src" | sed -e 's/_[0-9]\+.*//'`
 
     echo "==== Adding external $name ===="
-    if [ "$do_sign" -eq 1 ]; then
-      "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" --external "$src"
-    else
-      "$LAUNCHDIR"/pkg-repo --platform "${PLATFORM}" --external --no-sign "$src"
-    fi
+    "$LAUNCHDIR"/pkg-repo $REPO_ARGS --external "$src"
     echo "==== Done external $name ===="
 }
 
 
-TEMP=`getopt --name pkg-build-root --options abcd:hp:r:sS --longoptions add,build,clean,dir,help,no-sign,platform:,root-cmd:,setup -- "$@"`
+TEMP=`getopt --name pkg-build-root --options abcd:hp:r:sS --longoptions add,build,clean,dir:,help,no-sign,platform:,root-cmd:,setup -- "$@"`
 if [ $? != 0 ] ; then echo "Terminating." >&2 ; exit 1 ; fi
 eval set -- "$TEMP"
 
@@ -214,18 +200,27 @@ case "$OSFAMILY" in
         esac
         ;;
 esac
-
-# pre-clean the system (belongs to pkg-repo)
-$SUDO rm -fv /etc/apt/sources.list.d/local-build.list /etc/yum.repos.d/local-build.repo
+REPO_ARGS="-p $PLATFORM"
+if [ $do_sign -ne 1 ]; then
+    REPO_ARGS="$REPO_ARGS --no-sign"
+fi
+if [ -n "$SUDO" ]; then
+    REPO_ARGS="$REPO_ARGS --root-cmd $SUDO"
+fi
 
 # ==== setup (if requested) ====
 if [ "$do_setup" -eq 1 ]; then
-    if [ -n "$GPG_KEY_URL" -a "$BUILD_TYPE" = 'deb' ]; then
+    if [ -n "$GPG_KEY_URL" -a "$BUILD_TYPE" = 'deb' -a "$do_sign" -eq 1 ]; then
       $SUDO apt-key adv --fetch-keys "$GPG_KEY_URL" || :
     fi
     [ "$BUILD_TYPE" = 'deb' ] && $SUDO apt-get update
     $INSTALL_CMD $PACKAGES
 fi
+
+mkdir reports results 2>/dev/null || :
+[ -f ./repos.sh ] || cp -p "$LAUNCHDIR"/repos.sh .
+# setup system first (also required by clean)
+"$LAUNCHDIR"/pkg-repo $REPO_ARGS --setup-system
 
 
 # ==== clean (if requested) ====
@@ -233,14 +228,8 @@ if [ "$do_clean" -eq 1 ]; then
     for d in results reports; do
         [ -d $d ] && (rm -rfv $d || sudo rm -rfv $d)
     done
+    "$LAUNCHDIR"/pkg-repo $REPO_ARGS --clean --setup-system
 fi
-
-
-mkdir reports 2>/dev/null || :
-[ -f ./repos.sh ] || cp -p "$LAUNCHDIR"/repos.sh .
-$SUDO "$LAUNCHDIR"/pkg-repo --platform "$PLATFORM" --setup-system
-$SUDO "$LAUNCHDIR"/pkg-repo --platform "$PLATFORM" --clean
-"$LAUNCHDIR"/pkg-repo --platform "$PLATFORM"
 
 
 # ==== build ====
@@ -265,9 +254,10 @@ done
 if [ -n "$was_build" ]; then
     if [ "$BUILD_TYPE" = "deb" ]; then
         mkdir "results/$OSFAMILY/" 2>/dev/null || :
-        cp -rvp results/"$DEB_DISTRO" "results/$OSFAMILY/"
-        (cd "results/$OSFAMILY/$DEB_DISTRO"; ls -1 *.tar.gz *.tar.xz *.dsc *.changes *.deb 2>/dev/null| sort) > list.txt
+        cp -rvp ~/repository-artifacts/"$DEB_DISTRO" "results/$OSFAMILY/"
+        (cd "results/$OSFAMILY/$DEB_DISTRO"; ls -1 *.tar.gz *.tar.xz *.dsc *.changes *.deb 2>/dev/null || :) | sort > list.txt
     elif  [ "$BUILD_TYPE" = "rpm" ]; then
+        cp -rvp ~/repository-artifacts/* "results/"
         (cd results; ls -1 *.rpm 2>/dev/null | sort) > list.txt
     fi
 fi

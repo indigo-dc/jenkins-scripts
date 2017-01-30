@@ -1,0 +1,14 @@
+Source: test-main
+Section: misc
+Priority: optional
+Maintainer: František Dvořák <valtri@civ.zcu.cz>
+Build-Depends: debhelper (>= 7.0.50~), test-dep
+Standards-Version: 3.9.5
+Homepage: https://github.com/indigo-dc/jenkins-scripts
+
+Package: test-main
+Architecture: all
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, test-dep
+Description: Testing dependency
+ Testing dependency.

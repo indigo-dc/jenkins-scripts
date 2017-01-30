@@ -1,0 +1,15 @@
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: test-dep
+Source: https://github.com/indigo-dc/jenkins-scripts
+
+Files: *
+Copyright: Copyright 2017 CESNET - INDIGO-DataCloud
+License: public-domain
+
+Files: debian/*
+Copyright: 2017 František Dvořák <valtri@civ.zcu.cz>
+License: public-domain
+Comment: The Debian packaging is licensed under the same terms as the original package.
+
+License: public-domain
+ Dummy package. No specific licensing restrictions.
