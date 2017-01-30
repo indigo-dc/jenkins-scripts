@@ -70,11 +70,11 @@ It is expected to be launched from virtual machine or a container, although not 
 
 Example:
 
-    pkg-build-root -p debian-8-x86_64 -r sudo --setup --clean
+    pkg-build-root -p debian-8-x86_64 -r sudo --setup
     pkg-build-root -p debian-8-x86_64 -r sudo --add cache/*.changes
     pkg-build-root -p debian-8-x86_64 -r sudo --build package_*.dsc
 
-    pkg-build-root -p epel-7-x86_64 -r sudo --setup --clean
+    pkg-build-root -p epel-7-x86_64 -r sudo --setup
     pkg-build-root -p epel-7-x86_64 -r sudo --add cache/*.rpm
     pkg-build-root -p epel-7-x86_64 -r sudo --build package-*.src.rpm
 
