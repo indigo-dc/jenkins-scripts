@@ -106,6 +106,8 @@ add() {
         else
           archive='externals'
         fi
+        # workaround dput bug: orig file sometimes missing
+        cp -vp `dirname "$src"`/${name}_*.orig.* "$REPO/$DEB_DISTRO/" 2>/dev/null || :
         dput -U $dput_args "$archive" "$src"
     elif [ "$REPO_TYPE" = 'yum' ]; then
         [ "$do_sign" -eq 1 ] && rpmsign --addsign "$src"

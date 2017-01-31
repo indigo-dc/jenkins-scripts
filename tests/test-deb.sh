@@ -49,7 +49,9 @@ $PKG_BUILD2 --build /tmp/test-main_1.0.0.dsc
 mkdir test2
 $DOCKER2 bash -xc "cd /root; cp -rpv results/ reports/ list.txt /scripts/tests/test2/ && chown -R `id -u` /scripts/tests/test2/"
 
-# expected results
+# expected results (reports, binaries, sources + orig file, ...)
+# * test-dep: native format
+# * test-main: quilt format
 for test in test1 test2; do
     [ -s "$test"/list.txt ]
     [ -s "$test"/reports/test-dep-build.log ]
@@ -63,7 +65,8 @@ for test in test1 test2; do
     [ -s "$test"/results/"$osfamily"/stable/test-main_*.changes ]
     [ -s "$test"/results/"$osfamily"/stable/test-main_*_all.deb ]
     [ -s "$test"/results/"$osfamily"/stable/test-main_*.dsc ]
-    [ -s "$test"/results/"$osfamily"/stable/test-main_*.tar.* ]
+    [ -s "$test"/results/"$osfamily"/stable/test-main_*.debian.tar.* ]
+    [ -s "$test"/results/"$osfamily"/stable/test-main_*.orig.tar.* ]
     [ `wc -l "$test"/reports/success.log | cut -d' ' -f1` -eq 2 ]
 done
 
