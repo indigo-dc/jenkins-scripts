@@ -389,5 +389,9 @@ gpgcheck=1
 gpgkey=$GPG_KEY_URL
 priority=40
 EOF
+        if [ "$do_sign" -eq 0 ]; then
+            sed -i -e 's/^gpgcheck.*/gpgcheck=0/' -e '/^gpgkey/d' build.repo
+            sed -i -e 's/^gpgcheck.*/gpgcheck=0/' -e '/^gpgkey/d' latest.repo
+        fi
     fi
 fi
