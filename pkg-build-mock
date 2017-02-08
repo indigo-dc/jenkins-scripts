@@ -253,7 +253,8 @@ case "$OSFAMILY" in
           debian-*) distcodename='sid' ;;
           ubuntu-12) distcodename='precise' ;;
           ubuntu-14) distcodename='trusty' ;;
-          ubuntu-*) distcodename='xenial' ;;
+          ubuntu-16) distcodename='xenial' ;;
+          ubuntu-*) distcodename='yakkety' ;;
         esac
         IMAGE_CMD="sudo pbuilder --create --hookdir $LAUNCHDIR/pbuilder --distribution $distcodename --basetgz /var/cache/pbuilder/${PLATFORM}.tgz"
         ;;
