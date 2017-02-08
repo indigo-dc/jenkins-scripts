@@ -126,7 +126,6 @@ finish() {
         if [ "$do_sign" -eq 1 ]; then
             (cd "$REPO/$DEB_DISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
         fi
-        $SUDO apt-get update
     elif [ "$REPO_TYPE" = 'yum' ]; then
         createrepo_c "$REPO"/
     fi

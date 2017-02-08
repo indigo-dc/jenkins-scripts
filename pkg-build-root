@@ -72,6 +72,7 @@ deb_build() {
     changes=`find . -maxdepth 1 -type f -name "${name}_*.changes" | head -n 1`
 
     "$LAUNCHDIR"/pkg-repo $REPO_ARGS $changes
+    $SUDO apt-get update
     rm -f "reports/fail.${name}"
     echo "$name" >> reports/success.log
     echo "==== Done $name ===="
@@ -87,6 +88,7 @@ add() {
     echo "==== Adding external $name ===="
     "$LAUNCHDIR"/pkg-repo $REPO_ARGS --external "$src"
     echo "==== Done external $name ===="
+    was_external=1
 }
 
 
@@ -260,5 +262,11 @@ if [ -n "$was_build" ]; then
     elif  [ "$BUILD_TYPE" = "rpm" ]; then
         cp -rvp ~/repository-artifacts/* "results/"
         (cd results; ls -1 *.rpm 2>/dev/null | sort) > list.txt
+    fi
+fi
+
+if [ -n "$was_external" ]; then
+    if [ "$BUILD_TYPE" = "deb" ]; then
+        $SUDO apt-get update
     fi
 fi
