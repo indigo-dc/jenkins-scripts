@@ -40,15 +40,15 @@ repo_setup() {
           mkdir -p "$repo_dir/mini-dinstall/incoming"
           mkdir -p "$repo_dir/$DEB_DISTRO"
           touch "$repo_dir/$DEB_DISTRO/Packages"
-          ## Debian <= 9: "No sections in Release file" on existing and empty Release file
-          ## Debian >= 10: any Release file required
-          #if [ "${OSFAMILY}" = "debian" -a "${OSVER}" -ge "10" ]; then
-          #    touch "$repo_dir/$DEB_DISTRO/Release"
-          #    # signing required since Debian 10
-          #    if [ "$do_sign" -eq 1 ]; then
-          #        (cd "$repo_dir/$DEB_DISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
-          #    fi
-          #fi
+          # Debian <= 9: "No sections in Release file" on existing and empty Release file
+          # Debian >= 10: any Release file required
+          if [ "${OSFAMILY}" = "debian" -a "${OSVER}" -ge "10" ]; then
+              touch "$repo_dir/$DEB_DISTRO/Release"
+              # signing required since Debian 10
+              if [ "$do_sign" -eq 1 ]; then
+                  (cd "$repo_dir/$DEB_DISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
+              fi
+          fi
       fi
 
       cat >> ~/.dput.cf <<EOF
@@ -106,9 +106,11 @@ add() {
         else
           archive='externals'
         fi
+        dput -U $dput_args "$archive" "$src"
         # workaround dput bug: orig file sometimes missing
         cp -vp `dirname "$src"`/${name}_*.orig.* "$REPO/$DEB_DISTRO/" 2>/dev/null || :
-        dput -U $dput_args "$archive" "$src"
+        # workaround dput bug: buildinfo file missing in Debian >= 10
+        cp -vp `dirname "$src"`/${name}_*.buildinfo "$REPO/$DEB_DISTRO/" 2>/dev/null || :
     elif [ "$REPO_TYPE" = 'yum' ]; then
         [ "$do_sign" -eq 1 ] && rpmsign --addsign "$src"
         cp -vp "$src" "$REPO"/
