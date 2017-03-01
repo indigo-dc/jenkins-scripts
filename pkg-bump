@@ -30,7 +30,7 @@ if [ -f ${name}.spec ]; then
     specdate=`LC_ALL=C date '+%a %b %d %Y'`
     packager=`rpmdev-packager 2>/dev/null` || packager="Jenkins Builder <jenkins@`hostname -f`>"
 
-    sed -e "s/^\(\%global\s\+commit\s\+\).*/\1${commit}/" -i ${name}.spec
+    sed -e "s/^\(\%global\s\+commit\(0\)\?\s\+\).*/\1${commit}/" -i ${name}.spec
     sed -e "s/^\(Version:\s\+\).*/\1${version}/" -i ${name}.spec
     sed -e "s/^\(Release:\s\+\).*/\1${release}%{?dist}/" -i ${name}.spec
     awk "{ if (hit==1) { print \"* ${specdate} ${packager} - ${version}-${release}\n- ${comment}\n\"; hit=0 } } /%changelog/ { hit=1 } { print \$0 }" ${name}.spec > ${name}.spec.new
