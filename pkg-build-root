@@ -188,7 +188,7 @@ case "$OSFAMILY" in
         BUILD_TYPE='deb'
         INSTALL_CMD="$SUDO apt-get install -y"
         INSTALL_DEPS_CMD="$SUDO mk-build-deps"
-        PACKAGES='dput gnupg devscripts equivs mini-dinstall'
+        PACKAGES='dirmngr dput gnupg devscripts equivs mini-dinstall'
 
         case "$OSFAMILY-$OSVER" in
           debian-6) distcodename='squeeze' ;;
@@ -213,11 +213,14 @@ fi
 
 # ==== setup (if requested) ====
 if [ "$do_setup" -eq 1 ]; then
+    # one apt-get update required, before the GPG keys are available
+    [ "$BUILD_TYPE" = 'deb' ] && $SUDO apt-get update
+    # gpg package required first
+    $INSTALL_CMD $PACKAGES
     if [ -n "$GPG_KEY_URL" -a "$BUILD_TYPE" = 'deb' -a "$do_sign" -eq 1 ]; then
       $SUDO apt-key adv --fetch-keys "$GPG_KEY_URL" || :
+      [ "$BUILD_TYPE" = 'deb' ] && $SUDO apt-get update
     fi
-    [ "$BUILD_TYPE" = 'deb' ] && $SUDO apt-get update
-    $INSTALL_CMD $PACKAGES
 fi
 
 mkdir reports results 2>/dev/null || :
