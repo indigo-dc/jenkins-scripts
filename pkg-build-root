@@ -195,10 +195,12 @@ case "$OSFAMILY" in
           debian-7) distcodename='wheezy' ;;
           debian-8) distcodename='jessie' ;;
           debian-9) distcodename='stretch' ;;
+          debian-10) distcodename='buster' ;;
           debian-*) distcodename='sid' ;;
           ubuntu-12) distcodename='precise' ;;
           ubuntu-14) distcodename='trusty' ;;
           ubuntu-16) distcodename='xenial' ;;
+          ubuntu-18) distcodename='bionic' ;;
           ubuntu-*) distcodename='yakkety' ;;
         esac
         ;;

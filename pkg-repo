@@ -43,7 +43,18 @@ repo_setup() {
           # Debian <= 9: "No sections in Release file" on existing and empty Release file
           # Debian >= 10: any Release file required
           if [ "${OSFAMILY}" = "debian" -a "${OSVER}" -ge "10" ]; then
-              touch "$repo_dir/$DEB_DISTRO/Release"
+              cat << EOF > "$repo_dir/$DEB_DISTRO/Release"
+Suite: stable
+Codename: stable
+Date: Tue, 1 Jul 2019 0:00:00 UTC
+Architectures: all i386 powerpc sparc amd64
+MD5Sum:
+ d41d8cd98f00b204e9800998ecf8427e 0 Packages
+SHA1:
+ da39a3ee5e6b4b0d3255bfef95601890afd80709 0 Packages
+SHA256:
+ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 0 Packages
+EOF
               # signing required since Debian 10
               if [ "$do_sign" -eq 1 ]; then
                   (cd "$repo_dir/$DEB_DISTRO"; rm -f Release.gpg; gpg -abs -o Release.gpg Release)
@@ -73,7 +84,7 @@ keep_old=true
 
 [stable]
 # enable uploading packages with anything in changelogs
-alias=old-stable,stable,testing,unstable,experimental,wheezy,wheezy-security,jessie,jessie-security,sid,trusty,xenial,yakkety,UNRELEASED
+alias=old-stable,stable,testing,unstable,experimental,wheezy,wheezy-security,jessie,jessie-security,stretch,buster,sid,trusty,xenial,yakkety,bionic,UNRELEASED
 EOF
         touch ~/.mini-dinstall-${repo_name}.conf -r $0
     elif [ "$REPO_TYPE" = 'yum' ]; then
@@ -232,10 +243,12 @@ case "$OSFAMILY" in
           debian-7) distcodename='wheezy' ;;
           debian-8) distcodename='jessie' ;;
           debian-9) distcodename='stretch' ;;
+          debian-10) distcodename='buster' ;;
           debian-*) distcodename='sid' ;;
           ubuntu-12) distcodename='precise' ;;
           ubuntu-14) distcodename='trusty' ;;
           ubuntu-16) distcodename='xenial' ;;
+          ubuntu-18) distcodename='bionic' ;;
           ubuntu-*) distcodename='yakkety' ;;
         esac
         ;;
