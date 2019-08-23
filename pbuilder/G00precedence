@@ -3,5 +3,5 @@ cat > /etc/apt/preferences.d/scientific <<EOF
 # at least the same priority as main OS repository
 Package: *
 Pin: origin "scientific.zcu.cz"
-Pin-Priority: 500
+Pin-Priority: 501
 EOF
